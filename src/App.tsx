@@ -238,7 +238,7 @@ export default function App() {
 
   // Fix favicon stretch and center it in the browser title bar
   useEffect(() => {
-    const faviconUrl = "/favicon.png";
+    const faviconUrl = "/faviconcv.png";
     const img = new Image();
     img.src = faviconUrl;
     img.onload = () => {
