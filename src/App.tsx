@@ -236,46 +236,22 @@ export default function App() {
   const activeAudioPlaybackRef = useRef<{ stop: () => void } | null>(null);
   const [isPlayingClipAudio, setIsPlayingClipAudio] = useState(false);
 
-  // Fix favicon stretch and center it in the browser title bar
+  // Set favicon dynamically
   useEffect(() => {
-    const faviconUrl = "/faviconcv.png";
-    const img = new Image();
-    img.src = faviconUrl;
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+    const faviconUrl = "https://i.ibb.co/VWR45rzn/faviconcv.png";
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.type = "image/png";
+    link.href = faviconUrl;
 
-      ctx.clearRect(0, 0, 32, 32);
-
-      const srcWidth = img.width;
-      const srcHeight = img.height;
-      const maxDim = Math.max(srcWidth, srcHeight);
-      
-      const scale = 32 / maxDim;
-      const drawWidth = srcWidth * scale;
-      const drawHeight = srcHeight * scale;
-      const x = (32 - drawWidth) / 2;
-      const y = (32 - drawHeight) / 2;
-
-      ctx.drawImage(img, x, y, drawWidth, drawHeight);
-
-      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-      if (!link) {
-        link = document.createElement("link");
-        link.rel = "icon";
-        document.head.appendChild(link);
-      }
-      link.type = "image/png";
-      link.href = canvas.toDataURL("image/png");
-
-      let appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement;
-      if (appleLink) {
-        appleLink.href = canvas.toDataURL("image/png");
-      }
-    };
+    let appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement;
+    if (appleLink) {
+      appleLink.href = faviconUrl;
+    }
   }, []);
 
   // Playhead Clock tick during playback (Only if NO video is driving the time)

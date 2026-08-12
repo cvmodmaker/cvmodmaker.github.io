@@ -16,15 +16,34 @@ async function getFFmpeg(onStatusUpdate?: (status: string) => void): Promise<FFm
   if (ffmpegInstance && ffmpegInstance.loaded) {
     return ffmpegInstance;
   }
-  onStatusUpdate?.('Loading local FFmpeg WebAssembly engine...');
   const ffmpeg = new FFmpeg();
-  const baseURL = (import.meta as any).env?.BASE_URL + 'ffmpeg';
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-  });
-  ffmpegInstance = ffmpeg;
-  return ffmpeg;
+  
+  // Try the official unpkg CDN first to avoid any cached/corrupted local WebAssembly modules.
+  try {
+    onStatusUpdate?.('Initializing FFmpeg WebAssembly from CDN...');
+    const cdnBase = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${cdnBase}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${cdnBase}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    ffmpegInstance = ffmpeg;
+    return ffmpeg;
+  } catch (err) {
+    console.warn('CDN FFmpeg load failed, falling back to local assets:', err);
+    try {
+      onStatusUpdate?.('Loading local fallback FFmpeg engine...');
+      const baseURL = (import.meta as any).env?.BASE_URL + 'ffmpeg';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      ffmpegInstance = ffmpeg;
+      return ffmpeg;
+    } catch (localErr) {
+      console.error('All FFmpeg load attempts failed:', localErr);
+      throw localErr;
+    }
+  }
 }
 
 const captureFrameAtTime = (time: number): Promise<string> => {
