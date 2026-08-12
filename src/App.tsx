@@ -238,9 +238,8 @@ export default function App() {
 
   // Fix favicon stretch and center it in the browser title bar
   useEffect(() => {
-    const faviconUrl = "https://i.ibb.co/QjnnYSMR/miclogo.png";
+    const faviconUrl = "/favicon.png";
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.src = faviconUrl;
     img.onload = () => {
       const canvas = document.createElement("canvas");
