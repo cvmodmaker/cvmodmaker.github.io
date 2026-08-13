@@ -127,36 +127,27 @@ async function convertMp4ToOgv(
   }
 
   try {
-    onProgress?.(5, 'Initializing FFmpeg video engine...');
-    const ffmpeg = await getFFmpeg((msg) => onProgress?.(10, msg));
+    onProgress?.(2, 'Initializing video engine...');
+    const ffmpeg = await getFFmpeg((msg) => onProgress?.(5, 'Loading video engine...'));
 
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
-    let lastLog = '';
-    const logHandler = ({ message }: { message: string }) => {
-      if (message.includes('frame=') || message.includes('time=')) {
-        lastLog = message.trim();
-      }
-    };
-
     const progressHandler = ({ progress }: { progress: number }) => {
       if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
-      const p = Math.min(99, Math.round(progress * 100));
-      const msg = lastLog ? `Transcoding .ogv (${p}%): ${lastLog}` : `Transcoding video to .ogv (${p}%)...`;
-      onProgress?.(p, msg);
+      const p = 10 + Math.min(89, Math.max(0, Math.round(progress * 89)));
+      onProgress?.(p, `Converting MP4 to OGV...`);
     };
 
-    ffmpeg.on('log', logHandler);
     ffmpeg.on('progress', progressHandler);
 
-    onProgress?.(15, 'Reading video data buffer...');
+    onProgress?.(8, 'Reading video...');
     const inputData = await fetchFile(videoBlob);
 
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
     await ffmpeg.writeFile('input.mp4', inputData);
 
-    onProgress?.(20, 'Starting MP4 to OGV conversion (Theora + Vorbis)...');
+    onProgress?.(10, 'Converting MP4 to OGV...');
 
     // Convert MP4 to true OGV format (Theora video + Vorbis audio)
     // Use simpler FFmpeg command that auto-handles streams (avoids errors if no audio track exists)
@@ -174,7 +165,6 @@ async function convertMp4ToOgv(
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
     const data = await ffmpeg.readFile('dub_video.ogv');
-    ffmpeg.off('log', logHandler);
     ffmpeg.off('progress', progressHandler);
 
     try {
@@ -184,14 +174,14 @@ async function convertMp4ToOgv(
       // Ignore file cleanup errors
     }
 
-    onProgress?.(100, 'Video transcoding complete!');
+    onProgress?.(100, 'Video conversion complete!');
     return new Blob([data as Uint8Array], { type: 'video/ogg' });
   } catch (err: any) {
     if (err.message === 'EXPORT_CANCELLED' || abortSignal?.aborted) {
       throw new Error('EXPORT_CANCELLED');
     }
     console.error('FFmpeg transcoding to .ogv failed, using original video fallback:', err);
-    onProgress?.(100, 'Video notice: Using original video file as fallback.');
+    onProgress?.(100, 'Using original video as fallback.');
     return videoBlob;
   }
 }
@@ -249,16 +239,22 @@ export async function exportModpackZip(
     preselectedDubCharacters: allCharacterNames,
   };
 
+  let maxOverallPercent = 0;
+  const updateProgress = (status: string, percent: number) => {
+    maxOverallPercent = Math.max(maxOverallPercent, Math.round(percent));
+    onProgress?.({ status, percent: maxOverallPercent });
+  };
+
   // 1. Add _pack_info.ini
   checkAbort();
-  onProgress?.({ status: 'Generating _pack_info.ini...', percent: 5 });
+  updateProgress('Generating pack info...', 5);
   const packIniContent = generatePackInfoIni(fullPackInfo);
   zip.file('_pack_info.ini', packIniContent);
 
   // 2. Add Main Video file (transcode MP4 to true OGV unless excluded)
   checkAbort();
   if (fullPackInfo.excludeVideo) {
-    onProgress?.({ status: 'Skipping video file (Excluded in Pack Settings)...', percent: 55 });
+    updateProgress('Skipping video file...', 55);
   } else {
     let rawVideoBlob: Blob | null = null;
     if (videoMedia?.file) {
@@ -273,15 +269,13 @@ export async function exportModpackZip(
     }
 
     if (rawVideoBlob) {
-      onProgress?.({ status: 'Preparing video transcoding engine...', percent: 10 });
+      updateProgress('Preparing video engine...', 10);
       const ogvBlob = await convertMp4ToOgv(
         rawVideoBlob,
         (p, statusMsg) => {
           checkAbort();
-          onProgress?.({
-            status: statusMsg || `Converting video to .ogv (${p}%)...`,
-            percent: 10 + Math.floor((p / 100) * 45),
-          });
+          const targetOverallPercent = 10 + ((p / 100) * 45);
+          updateProgress(statusMsg || 'Converting MP4 to OGV...', targetOverallPercent);
         },
         abortSignal
       );
@@ -294,11 +288,11 @@ export async function exportModpackZip(
   // 3. Add Backing Track if present
   checkAbort();
   if (backingTrackMedia?.file) {
-    onProgress?.({ status: 'Adding backing track...', percent: 58 });
+    updateProgress('Adding backing track...', 58);
     const ext = backingTrackMedia.file.name.split('.').pop() || 'wav';
     zip.file(`_backing_track.${ext}`, backingTrackMedia.file);
   } else if (backingTrackMedia?.url) {
-    onProgress?.({ status: 'Adding backing track...', percent: 58 });
+    updateProgress('Adding backing track...', 58);
     try {
       const resp = await fetch(backingTrackMedia.url);
       const blob = await resp.blob();
@@ -310,7 +304,7 @@ export async function exportModpackZip(
 
   // 4. Add Pack Icon & Filler images
   checkAbort();
-  onProgress?.({ status: 'Adding pack metadata images...', percent: 62 });
+  updateProgress('Adding pack images...', 62);
   const iconFilename = fullPackInfo.iconFilename || '_icon.png';
   const iconBlob = await getBlobFromUrlOrData(fullPackInfo.iconUrl, fullPackInfo.iconBlob);
   if (iconBlob) zip.file(iconFilename, iconBlob);
@@ -321,7 +315,7 @@ export async function exportModpackZip(
 
   // 5. Add Character Avatars (ALL characters included, preserving original format)
   checkAbort();
-  onProgress?.({ status: 'Adding character avatars...', percent: 65 });
+  updateProgress('Adding character avatars...', 65);
   for (const char of characters) {
     checkAbort();
     if (char.autoScreenshot) {
@@ -374,10 +368,7 @@ export async function exportModpackZip(
         const finalImageFilename = `${cleanChar}_frame_${count}.png`;
         clip.imageFilename = finalImageFilename;
 
-        onProgress?.({
-          status: `Capturing frame for clip ${i + 1}/${totalClips}: ${finalImageFilename}...`,
-          percent: stepPercent,
-        });
+        updateProgress(`Capturing frame ${i + 1}/${totalClips}...`, stepPercent);
 
         const capturedUrl = await captureFrameAtTime(clip.startTime);
         if (capturedUrl) {
@@ -392,10 +383,7 @@ export async function exportModpackZip(
     const firstCharName = clip.dubCharacters[0]?.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'clip';
     const clipBaseName = clip.filename || `${clipIndexStr}_${firstCharName}`;
 
-    onProgress?.({
-      status: `Processing clip ${i + 1}/${totalClips}: ${clipBaseName}...`,
-      percent: stepPercent,
-    });
+    updateProgress(`Processing clip ${i + 1}/${totalClips}...`, stepPercent);
 
     // Generate clip INI
     const clipIni = generateClipIni({
@@ -449,7 +437,7 @@ export async function exportModpackZip(
   // 7. Add Draft Project JSON (includes all characters and packInfo)
   checkAbort();
   if (!fullPackInfo.excludeDraftJson) {
-    onProgress?.({ status: 'Adding project draft metadata...', percent: 93 });
+    updateProgress('Adding project data...', 93);
     const cleanPackInfo = { ...fullPackInfo, iconBlob: undefined, fillerImageBlob: undefined };
     if (cleanPackInfo.iconUrl?.startsWith('blob:')) cleanPackInfo.iconUrl = undefined;
     if (cleanPackInfo.fillerImageUrl?.startsWith('blob:')) cleanPackInfo.fillerImageUrl = undefined;
@@ -487,17 +475,14 @@ export async function exportModpackZip(
 
   // 8. ZIP compression
   checkAbort();
-  onProgress?.({ status: 'Compressing ZIP archive...', percent: 95 });
+  updateProgress('Compressing archive...', 95);
 
   const zippedBlob = await zip.generateAsync({ type: 'blob' }, (metadata) => {
     checkAbort();
-    onProgress?.({
-      status: `Compressing ZIP... ${Math.round(metadata.percent)}%`,
-      percent: 95 + Math.floor((metadata.percent / 100) * 5),
-    });
+    updateProgress(`Compressing archive...`, 95 + ((metadata.percent / 100) * 5));
   });
 
   checkAbort();
-  onProgress?.({ status: 'Export complete!', percent: 100 });
+  updateProgress('Export complete!', 100);
   return zippedBlob;
 }
