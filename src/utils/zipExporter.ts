@@ -173,9 +173,11 @@ async function convertMp4ToOgv(
     const execResult = await ffmpeg.exec([
       '-i', 'input.mp4',
       '-c:v', 'libtheora',
+      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
       '-pix_fmt', 'yuv420p',
       '-q:v', '6',
       '-c:a', 'libvorbis',
+      '-ar', '44100',
       '-q:a', '4',
       'dub_video.ogv'
     ]);
