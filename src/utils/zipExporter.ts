@@ -170,16 +170,17 @@ async function convertMp4ToOgv(
     onProgress?.(10, 'Converting MP4 to OGV...');
 
     // Convert MP4 to true OGV format (Theora video + Vorbis audio)
-    // Use simpler FFmpeg command that auto-handles streams (avoids errors if no audio track exists)
     const execResult = await ffmpeg.exec([
       '-i', 'input.mp4',
+      '-c:v', 'libtheora',
       '-q:v', '6',
+      '-c:a', 'libvorbis',
       '-q:a', '4',
       'dub_video.ogv'
     ]);
     
     if (execResult !== 0 && (execResult as any).code !== 0) {
-      throw new Error('FFmpeg conversion failed with code ' + (typeof execResult === 'number' ? execResult : (execResult as any).code));
+      throw new Error('OGV_CONVERSION_FAILED');
     }
 
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
@@ -200,9 +201,8 @@ async function convertMp4ToOgv(
     if (err.message === 'EXPORT_CANCELLED' || abortSignal?.aborted) {
       throw new Error('EXPORT_CANCELLED');
     }
-    console.error('FFmpeg transcoding to .ogv failed, using original video fallback:', err);
-    onProgress?.(100, 'Using original video as fallback.');
-    return videoBlob;
+    console.error('FFmpeg transcoding to .ogv failed:', err);
+    throw new Error('OGV_CONVERSION_FAILED');
   }
 }
 
@@ -237,7 +237,7 @@ export async function exportModpackZip(
   backingTrackMedia?: MediaSource,
   onProgress?: (progress: ZipExportProgress) => void,
   abortSignal?: AbortSignal
-): Promise<Blob> {
+): Promise<{ archive: Blob; ogvFailed: boolean }> {
   const checkAbort = () => {
     if (abortSignal?.aborted) {
       throw new Error('EXPORT_CANCELLED');
@@ -245,6 +245,7 @@ export async function exportModpackZip(
   };
 
   const zip = new JSZip();
+  let ogvFailed = false;
 
   // Ensure all current character names are included in preselectedDubCharacters
   const allCharacterNames = Array.from(
@@ -290,18 +291,26 @@ export async function exportModpackZip(
 
     if (rawVideoBlob) {
       updateProgress('Preparing video engine...', 10);
-      const ogvBlob = await convertMp4ToOgv(
-        rawVideoBlob,
-        (p, statusMsg) => {
-          checkAbort();
-          const targetOverallPercent = 10 + ((p / 100) * 45);
-          updateProgress(statusMsg || 'Converting MP4 to OGV...', targetOverallPercent);
-        },
-        abortSignal
-      );
-      checkAbort();
-      const ext = ogvBlob.type === 'video/mp4' || ogvBlob.type.includes('mp4') ? 'mp4' : 'ogv';
-      zip.file(`dub_video.${ext}`, ogvBlob);
+      try {
+        const ogvBlob = await convertMp4ToOgv(
+          rawVideoBlob,
+          (p, statusMsg) => {
+            checkAbort();
+            const targetOverallPercent = 10 + ((p / 100) * 45);
+            updateProgress(statusMsg || 'Converting MP4 to OGV...', targetOverallPercent);
+          },
+          abortSignal
+        );
+        checkAbort();
+        const ext = ogvBlob.type === 'video/mp4' || ogvBlob.type.includes('mp4') ? 'mp4' : 'ogv';
+        zip.file(`dub_video.${ext}`, ogvBlob);
+      } catch (err: any) {
+        if (err.message === 'EXPORT_CANCELLED' || abortSignal?.aborted) {
+          throw new Error('EXPORT_CANCELLED');
+        }
+        console.warn('OGV conversion failed, skipping video export.');
+        ogvFailed = true;
+      }
     }
   }
 
@@ -504,5 +513,5 @@ export async function exportModpackZip(
 
   checkAbort();
   updateProgress('Export complete!', 100);
-  return zippedBlob;
+  return { archive: zippedBlob, ogvFailed };
 }

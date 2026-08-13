@@ -260,7 +260,7 @@ export default function App() {
   const [customModal, setCustomModal] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: React.ReactNode;
     type: 'alert' | 'confirm';
     onConfirm?: () => void;
   }>({
@@ -270,7 +270,7 @@ export default function App() {
     type: 'alert',
   });
 
-  const showAlert = (message: string, title = 'Notice') => {
+  const showAlert = (message: React.ReactNode, title = 'Notice') => {
     setCustomModal({
       isOpen: true,
       title,
@@ -279,7 +279,7 @@ export default function App() {
     });
   };
 
-  const showConfirm = (message: string, onConfirm: () => void, title = 'Confirm Action') => {
+  const showConfirm = (message: React.ReactNode, onConfirm: () => void, title = 'Confirm Action') => {
     setCustomModal({
       isOpen: true,
       title,
@@ -1173,7 +1173,7 @@ export default function App() {
     exportAbortControllerRef.current = controller;
 
     try {
-      const zippedBlob = await exportModpackZip(
+      const { archive: zippedBlob, ogvFailed } = await exportModpackZip(
         packInfo,
         characters,
         clips,
@@ -1196,6 +1196,21 @@ export default function App() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(downloadUrl);
+
+      if (ogvFailed) {
+        showAlert(
+          <div>
+            The video could not be converted to OGV format automatically. Your ZIP file has been generated without it.
+            <br /><br />
+            You can convert your original MP4 manually at{' '}
+            <a href="https://convertio.co/mp4-ogv" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">
+              convertio.co/mp4-ogv
+            </a>, 
+            and then copy the converted <strong>dub_video.ogv</strong> into your exported ZIP archive.
+          </div>,
+          'Video Conversion Failed'
+        );
+      }
     } catch (err: any) {
       if (err?.message === 'EXPORT_CANCELLED' || controller.signal.aborted) {
         console.log('Modpack export cancelled by user.');
@@ -1601,7 +1616,7 @@ export default function App() {
               </button>
             </div>
             <div className="p-4 space-y-4">
-              <p className="text-zinc-200 text-xs leading-relaxed">{customModal.message}</p>
+              <div className="text-zinc-200 text-xs leading-relaxed">{customModal.message}</div>
               <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800/80">
                 {customModal.type === 'confirm' && (
                   <button
