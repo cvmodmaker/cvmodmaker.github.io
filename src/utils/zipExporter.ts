@@ -18,30 +18,31 @@ async function getFFmpeg(onStatusUpdate?: (status: string) => void): Promise<FFm
   }
   const ffmpeg = new FFmpeg();
   
-  // Try the official unpkg CDN first to avoid any cached/corrupted local WebAssembly modules.
+  // Try local assets first (using what the user uploaded on GitHub and downloaded locally)
   try {
-    onStatusUpdate?.('Initializing FFmpeg WebAssembly from CDN...');
-    const cdnBase = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+    onStatusUpdate?.('Initializing local FFmpeg WebAssembly engine...');
+    const baseURL = `${window.location.origin}/ffmpeg`;
     await ffmpeg.load({
-      coreURL: await toBlobURL(`${cdnBase}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${cdnBase}/ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
     });
     ffmpegInstance = ffmpeg;
     return ffmpeg;
   } catch (err) {
-    console.warn('CDN FFmpeg load failed, falling back to local assets:', err);
+    console.warn('Local FFmpeg load failed, trying unpkg CDN as fallback:', err);
     try {
-      onStatusUpdate?.('Loading local fallback FFmpeg engine...');
-      const baseURL = (import.meta as any).env?.BASE_URL + 'ffmpeg';
+      onStatusUpdate?.('Initializing FFmpeg WebAssembly from CDN...');
+      const cdnBase = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
       await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        coreURL: await toBlobURL(`${cdnBase}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${cdnBase}/ffmpeg-core.wasm`, 'application/wasm'),
       });
       ffmpegInstance = ffmpeg;
       return ffmpeg;
-    } catch (localErr) {
-      console.error('All FFmpeg load attempts failed:', localErr);
-      throw localErr;
+    } catch (cdnErr) {
+      console.error('All FFmpeg load attempts failed:', cdnErr);
+      throw cdnErr;
     }
   }
 }
