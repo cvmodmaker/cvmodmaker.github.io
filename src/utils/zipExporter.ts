@@ -173,6 +173,7 @@ async function convertMp4ToOgv(
     const execResult = await ffmpeg.exec([
       '-i', 'input.mp4',
       '-c:v', 'libtheora',
+      '-pix_fmt', 'yuv420p',
       '-q:v', '6',
       '-c:a', 'libvorbis',
       '-q:a', '4',
@@ -275,7 +276,7 @@ export async function exportModpackZip(
   // 2. Add Main Video file (transcode MP4 to true OGV unless excluded)
   checkAbort();
   if (fullPackInfo.excludeVideo) {
-    updateProgress('Skipping video file...', 55);
+    updateProgress('Skipping video file...', 80);
   } else {
     let rawVideoBlob: Blob | null = null;
     if (videoMedia?.file) {
@@ -296,7 +297,7 @@ export async function exportModpackZip(
           rawVideoBlob,
           (p, statusMsg) => {
             checkAbort();
-            const targetOverallPercent = 10 + ((p / 100) * 45);
+            const targetOverallPercent = 10 + ((p / 100) * 70);
             updateProgress(statusMsg || 'Converting MP4 to OGV...', targetOverallPercent);
           },
           abortSignal
@@ -317,11 +318,11 @@ export async function exportModpackZip(
   // 3. Add Backing Track if present
   checkAbort();
   if (backingTrackMedia?.file) {
-    updateProgress('Adding backing track...', 58);
+    updateProgress('Adding backing track...', 82);
     const ext = backingTrackMedia.file.name.split('.').pop() || 'wav';
     zip.file(`_backing_track.${ext}`, backingTrackMedia.file);
   } else if (backingTrackMedia?.url) {
-    updateProgress('Adding backing track...', 58);
+    updateProgress('Adding backing track...', 82);
     try {
       const resp = await fetch(backingTrackMedia.url);
       const blob = await resp.blob();
@@ -333,7 +334,7 @@ export async function exportModpackZip(
 
   // 4. Add Pack Icon & Filler images
   checkAbort();
-  updateProgress('Adding pack images...', 62);
+  updateProgress('Adding pack images...', 84);
   const iconFilename = fullPackInfo.iconFilename || '_icon.png';
   const iconBlob = await getBlobFromUrlOrData(fullPackInfo.iconUrl, fullPackInfo.iconBlob);
   if (iconBlob) zip.file(iconFilename, iconBlob);
@@ -344,7 +345,7 @@ export async function exportModpackZip(
 
   // 5. Add Character Avatars (ALL characters included, preserving original format)
   checkAbort();
-  updateProgress('Adding character avatars...', 65);
+  updateProgress('Adding character avatars...', 86);
   for (const char of characters) {
     checkAbort();
     if (char.autoScreenshot) {
@@ -378,7 +379,7 @@ export async function exportModpackZip(
   for (let i = 0; i < totalClips; i++) {
     checkAbort();
     const clip = { ...clips[i] };
-    const stepPercent = 68 + Math.floor((i / Math.max(1, totalClips)) * 25);
+    const stepPercent = 88 + Math.floor((i / Math.max(1, totalClips)) * 5);
 
     // Dynamically auto-screenshot if the character's autoScreenshot is enabled
     const primaryChar = clip.dubCharacters[0];
