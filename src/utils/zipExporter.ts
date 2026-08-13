@@ -47,34 +47,48 @@ async function getFFmpeg(onStatusUpdate?: (status: string) => void): Promise<FFm
   }
 }
 
-const captureFrameAtTime = (time: number): Promise<string> => {
+export const captureFrameAtTime = (
+  time: number,
+  videoMediaUrl?: string
+): Promise<string> => {
   return new Promise((resolve) => {
     const videoEl = document.getElementById('main-video-player') as HTMLVideoElement;
-    if (!videoEl) {
+    const mediaUrl = videoMediaUrl || videoEl?.src || videoEl?.currentSrc;
+
+    if (!mediaUrl) {
       resolve('');
       return;
     }
-    const originalTime = videoEl.currentTime;
-    
+
+    const offscreenVid = document.createElement('video');
+    offscreenVid.crossOrigin = 'anonymous';
+    offscreenVid.muted = true;
+    offscreenVid.playsInline = true;
+    offscreenVid.preload = 'auto';
+
     let resolved = false;
     const cleanup = () => {
       if (resolved) return;
       resolved = true;
-      videoEl.removeEventListener('seeked', handleSeeked);
+      offscreenVid.removeEventListener('seeked', handleSeeked);
+      offscreenVid.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      offscreenVid.removeEventListener('error', handleError);
       clearTimeout(timeoutId);
       try {
-        videoEl.currentTime = originalTime;
+        offscreenVid.pause();
+        offscreenVid.removeAttribute('src');
+        offscreenVid.load();
       } catch (e) {}
     };
 
-    const handleSeeked = () => {
+    const doCapture = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = videoEl.videoWidth || 640;
-        canvas.height = videoEl.videoHeight || 360;
+        canvas.width = offscreenVid.videoWidth || videoEl?.videoWidth || 640;
+        canvas.height = offscreenVid.videoHeight || videoEl?.videoHeight || 360;
         const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(videoEl, 0, 0);
+        if (ctx && (offscreenVid.videoWidth > 0 || (videoEl && videoEl.videoWidth > 0))) {
+          ctx.drawImage(offscreenVid, 0, 0);
           resolve(canvas.toDataURL('image/png'));
         } else {
           resolve('');
@@ -87,29 +101,35 @@ const captureFrameAtTime = (time: number): Promise<string> => {
       }
     };
 
+    const handleSeeked = () => {
+      doCapture();
+    };
+
+    const handleLoadedMetadata = () => {
+      const targetTime = Math.min(time, Math.max(0, (offscreenVid.duration || 100) - 0.05));
+      offscreenVid.currentTime = targetTime;
+    };
+
+    const handleError = () => {
+      resolve('');
+      cleanup();
+    };
+
     const timeoutId = setTimeout(() => {
       if (!resolved) {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = videoEl.videoWidth || 640;
-          canvas.height = videoEl.videoHeight || 360;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(videoEl, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
-          } else {
-            resolve('');
-          }
-        } catch (e) {
-          resolve('');
-        } finally {
-          cleanup();
-        }
+        doCapture();
       }
-    }, 1000);
+    }, 1500);
 
-    videoEl.addEventListener('seeked', handleSeeked);
-    videoEl.currentTime = time;
+    offscreenVid.addEventListener('seeked', handleSeeked);
+    offscreenVid.addEventListener('loadedmetadata', handleLoadedMetadata);
+    offscreenVid.addEventListener('error', handleError);
+
+    offscreenVid.src = mediaUrl;
+    if (offscreenVid.readyState >= 1) {
+      const targetTime = Math.min(time, Math.max(0, (offscreenVid.duration || 100) - 0.05));
+      offscreenVid.currentTime = targetTime;
+    }
   });
 };
 
@@ -370,7 +390,7 @@ export async function exportModpackZip(
 
         updateProgress(`Capturing frame ${i + 1}/${totalClips}...`, stepPercent);
 
-        const capturedUrl = await captureFrameAtTime(clip.startTime);
+        const capturedUrl = await captureFrameAtTime(clip.startTime, videoMedia?.url);
         if (capturedUrl) {
           clip.imageUrl = capturedUrl;
         }

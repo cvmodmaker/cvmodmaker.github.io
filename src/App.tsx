@@ -22,9 +22,16 @@ import {
   sliceAudioBuffer,
 } from './utils/audio';
 import { getSmartFilenameForCharacter, reindexClipsByCharacter } from './utils/ini';
-import { exportModpackZip, ZipExportProgress } from './utils/zipExporter';
+import { captureFrameAtTime, exportModpackZip, ZipExportProgress } from './utils/zipExporter';
 import { importDraftZip } from './utils/zipImporter';
-import { saveActiveProjectLocally, SavedProject } from './utils/projectStorage';
+import { 
+  saveActiveProjectLocally, 
+  getActiveProjectFromStorage, 
+  deleteSavedProject,
+  saveMediaFileToStorage,
+  loadMediaFileFromStorage,
+  SavedProject 
+} from './utils/projectStorage';
 import { X } from 'lucide-react';
 
 export default function App() {
@@ -95,6 +102,9 @@ export default function App() {
   const [isBackingTrackOnly, setIsBackingTrackOnly] = useState(false);
 
   const [projectId, setProjectId] = useState<string>(`project_${Date.now()}`);
+  const [hasActiveProject, setHasActiveProject] = useState<boolean>(() => {
+    return Boolean(getActiveProjectFromStorage());
+  });
 
   // Auto-save project state locally whenever project details change
   useEffect(() => {
@@ -109,19 +119,53 @@ export default function App() {
       videoMedia?.url,
       backingTrackMedia?.url
     );
+    setHasActiveProject(true);
   }, [projectId, packInfo, characters, clips, videoMedia, backingTrackMedia, view]);
 
-  const handleSelectRecentProject = (project: SavedProject) => {
+  const handleDeleteProject = (deletedId: string) => {
+    deleteSavedProject(deletedId);
+    if (deletedId === projectId || !getActiveProjectFromStorage()) {
+      setProjectId(`project_${Date.now()}`);
+      setPackInfo({
+        title: 'New Dub Pack',
+        iconFilename: '_icon.png',
+        authors: ['YourName'],
+        readme: 'My new voice modpack for The Choicer Voicer.',
+        preselectedDubCharacters: [],
+      });
+      setCharacters([]);
+      setClips([]);
+      setVideoMedia(undefined);
+      setBackingTrackMedia(undefined);
+      setCurrentTime(0);
+      setDuration(0);
+      setSelectedClipId(undefined);
+      setHasActiveProject(false);
+    }
+  };
+
+  const handleSelectRecentProject = async (project: SavedProject) => {
+    if (project.id === projectId) {
+      setView('editor');
+      return;
+    }
+
     setProjectId(project.id);
     setPackInfo(project.packInfo);
     setCharacters(project.characters || []);
     setClips(project.clips || []);
     setDuration(project.duration || 0);
+    setHasActiveProject(true);
     
+    // Check IndexedDB for persisted media
+    const persistedVideo = await loadMediaFileFromStorage(project.id, 'video');
+    const persistedBackingTrack = await loadMediaFileFromStorage(project.id, 'backingTrack');
+
     const missingFiles: string[] = [];
     
-    if (project.videoMediaName) missingFiles.push(project.videoMediaName);
-    if (project.backingTrackName) missingFiles.push(project.backingTrackName);
+    if (project.videoMediaName && !persistedVideo) missingFiles.push(project.videoMediaName);
+    if (project.backingTrackName && !persistedBackingTrack) missingFiles.push(project.backingTrackName);
+    
     project.characters?.forEach(c => {
       const charName = c.originalFilename || c.avatarFilename;
       if (charName && !c.avatarUrl) {
@@ -162,7 +206,15 @@ export default function App() {
       setMissingFilesPrompt(missingFiles);
     }
 
-    if (project.videoMediaUrl || project.videoMediaName) {
+    // Attempt to load from persisted IndexedDB blobs if they exist
+    if (persistedVideo && (persistedVideo instanceof File || persistedVideo instanceof Blob)) {
+      // If it lost its File type during IndexedDB serialization, wrap it
+      const vFile = persistedVideo instanceof File 
+        ? persistedVideo 
+        : new File([persistedVideo], project.videoMediaName || 'dub_video.mp4', { type: persistedVideo.type || 'video/mp4' });
+      // Re-trigger the processing to restore perfectly
+      handleUploadVideo(vFile);
+    } else if (project.videoMediaUrl || project.videoMediaName) {
       setVideoMedia({
         name: project.videoMediaName || 'dub_video.mp4',
         url: project.videoMediaUrl || '',
@@ -172,7 +224,12 @@ export default function App() {
       setVideoMedia(undefined);
     }
 
-    if (project.backingTrackUrl || project.backingTrackName) {
+    if (persistedBackingTrack && (persistedBackingTrack instanceof File || persistedBackingTrack instanceof Blob)) {
+      const bFile = persistedBackingTrack instanceof File 
+        ? persistedBackingTrack 
+        : new File([persistedBackingTrack], project.backingTrackName || '_backing_track.wav', { type: persistedBackingTrack.type || 'audio/wav' });
+      handleUploadBackingTrack(bFile);
+    } else if (project.backingTrackUrl || project.backingTrackName) {
       setBackingTrackMedia({
         name: project.backingTrackName || '_backing_track.wav',
         url: project.backingTrackUrl || '',
@@ -364,6 +421,10 @@ export default function App() {
       const ext = file.name.split('.').pop() || 'mp4';
       const renamedFile = new File([file], `dub_video.${ext}`, { type: file.type });
       const dataUrl = URL.createObjectURL(renamedFile);
+      
+      // Save media to IndexedDB for offline persistence across sessions
+      saveMediaFileToStorage(projectId, 'video', renamedFile);
+
       try {
         const audioBuffer = await decodeAudioFile(renamedFile);
         const peaks = extractWaveformPeaks(audioBuffer, 1200);
@@ -421,6 +482,10 @@ export default function App() {
     setLoadingMessage('Processing and decoding backing track...');
     try {
       const dataUrl = URL.createObjectURL(file);
+      
+      // Save media to IndexedDB for offline persistence across sessions
+      saveMediaFileToStorage(projectId, 'backingTrack', file);
+      
       try {
         const audioBuffer = await decodeAudioFile(file);
         const fileDuration = audioBuffer.duration;
@@ -625,66 +690,8 @@ export default function App() {
     []
   );
 
-  const captureFrameAtTime = (time: number): Promise<string> => {
-    return new Promise((resolve) => {
-      const videoEl = document.getElementById('main-video-player') as HTMLVideoElement;
-      if (!videoEl) {
-        resolve('');
-        return;
-      }
-      
-      let resolved = false;
-      const cleanup = () => {
-        if (resolved) return;
-        resolved = true;
-        videoEl.removeEventListener('seeked', handleSeeked);
-        clearTimeout(timeoutId);
-      };
-
-      const handleSeeked = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = videoEl.videoWidth || 640;
-          canvas.height = videoEl.videoHeight || 360;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(videoEl, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
-          } else {
-            resolve('');
-          }
-        } catch (err) {
-          console.error('Frame capture error:', err);
-          resolve('');
-        } finally {
-          cleanup();
-        }
-      };
-
-      const timeoutId = setTimeout(() => {
-        if (!resolved) {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = videoEl.videoWidth || 640;
-            canvas.height = videoEl.videoHeight || 360;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(videoEl, 0, 0);
-              resolve(canvas.toDataURL('image/png'));
-            } else {
-              resolve('');
-            }
-          } catch (e) {
-            resolve('');
-          } finally {
-            cleanup();
-          }
-        }
-      }, 1000);
-
-      videoEl.addEventListener('seeked', handleSeeked);
-      videoEl.currentTime = time;
-    });
+  const captureFrameAtTimeLocal = (time: number): Promise<string> => {
+    return captureFrameAtTime(time, videoMedia?.url);
   };
 
   // Effect to automatically sync auto-screenshot filenames and capture frames
@@ -741,7 +748,7 @@ export default function App() {
       const runCaptures = async () => {
         const clipToCapture = clipsToCapture[0];
         try {
-          const imgUrl = await captureFrameAtTime(clipToCapture.startTime);
+          const imgUrl = await captureFrameAtTimeLocal(clipToCapture.startTime);
           if (imgUrl) {
             setClips((prev) =>
               prev.map((c) =>
@@ -1091,6 +1098,7 @@ export default function App() {
       setBackingTrackMedia(undefined);
       setCurrentTime(0);
       setDuration(0);
+      setHasActiveProject(true);
       setView('editor');
     };
 
@@ -1236,16 +1244,21 @@ export default function App() {
       {view === 'home' ? (
         <div className="flex-1 overflow-y-auto">
           <HomePage
-            currentActiveProject={{
-              id: 'active-session',
-              title: packInfo.title,
-              updatedAt: Date.now(),
-              packInfo,
-              characters,
-              clips,
-            }}
+            currentActiveProject={
+              hasActiveProject
+                ? {
+                    id: projectId,
+                    title: packInfo.title,
+                    updatedAt: Date.now(),
+                    packInfo,
+                    characters,
+                    clips,
+                  }
+                : null
+            }
             onOpenProject={handleSelectRecentProject}
             onCreateNewProject={handleCreateNewProject}
+            onDeleteProject={handleDeleteProject}
             onImportZip={(file) => {
               handleImportDraft(file);
               setView('editor');

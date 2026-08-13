@@ -18,6 +18,7 @@ interface HomePageProps {
   onOpenProject: (project: SavedProject) => void;
   onCreateNewProject: () => void;
   onImportZip: (file: File) => void;
+  onDeleteProject?: (id: string) => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -25,6 +26,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onOpenProject,
   onCreateNewProject,
   onImportZip,
+  onDeleteProject,
 }) => {
   const [projectsList, setProjectsList] = useState<SavedProject[]>(getSavedProjectsList());
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,6 +36,9 @@ export const HomePage: React.FC<HomePageProps> = ({
     e.stopPropagation();
     deleteSavedProject(id);
     setProjectsList(getSavedProjectsList());
+    if (onDeleteProject) {
+      onDeleteProject(id);
+    }
   };
 
   const handleZipFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,11 +75,11 @@ export const HomePage: React.FC<HomePageProps> = ({
           <img src="https://i.ibb.co/PzjnXrhK/vclogo.png" alt="Game Logo" draggable={false} className="h-20 object-contain" />
         </div>
 
-        {/* Active Project Resume Banner */}
-        {currentActiveProject && (
-          <div className="bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Active Project Resume / New Project Banner */}
+        {currentActiveProject ? (
+          <div className="bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
             <div className="flex items-center gap-4">
-              <img src="https://i.ibb.co/PzjnXrhK/vclogo.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain" />
+              <img src="https://i.ibb.co/PzjnXrhK/vclogo.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain shrink-0" />
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 text-[10px] uppercase font-bold text-amber-400 bg-amber-500/20 border border-zinc-800 px-2 py-0.5 rounded-full">
@@ -84,7 +89,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                     Last saved {new Date(currentActiveProject.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <h2 className="text-lg font-bold text-zinc-100">{currentActiveProject.title}</h2>
+                <h2 className="text-lg font-bold text-zinc-100">{currentActiveProject.title || 'Untitled Project'}</h2>
                 <p className="text-xs text-zinc-400 flex items-center gap-4">
                   <span className="flex items-center gap-1">
                     <Users className="w-3.5 h-3.5 text-amber-400" />
@@ -101,9 +106,37 @@ export const HomePage: React.FC<HomePageProps> = ({
             <button
               type="button"
               onClick={() => onOpenProject(currentActiveProject)}
-              className="bg-[#d97706] hover:bg-[#f59e0b] text-white font-bold px-5 py-2.5 rounded-lg text-xs flex items-center gap-2 transition-all cursor-pointer border-none"
+              className="bg-[#d97706] hover:bg-[#f59e0b] text-white font-bold px-5 py-2.5 rounded-lg text-xs flex items-center gap-2 transition-all cursor-pointer border-none shadow-md hover:shadow-amber-500/20 shrink-0"
             >
               <span>Continue Editing Work</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+            <div className="flex items-center gap-4">
+              <img src="https://i.ibb.co/PzjnXrhK/vclogo.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain shrink-0" />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[10px] uppercase font-bold text-amber-400 bg-amber-500/20 border border-zinc-800 px-2 py-0.5 rounded-full">
+                    <FolderPlus className="w-3 h-3" /> Start Fresh
+                  </span>
+                  <span className="text-xs text-zinc-400">Ready to build</span>
+                </div>
+                <h2 className="text-lg font-bold text-zinc-100">Create a New Project</h2>
+                <p className="text-xs text-zinc-400">
+                  Create a new custom dub project for The Choicer Voicer game.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onCreateNewProject}
+              className="bg-[#d97706] hover:bg-[#f59e0b] text-white font-bold px-5 py-2.5 rounded-lg text-xs flex items-center gap-2 transition-all cursor-pointer border-none shadow-md hover:shadow-amber-500/20 shrink-0"
+            >
+              <FolderPlus className="w-4 h-4" />
+              <span>Create New Project</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

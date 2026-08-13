@@ -1,4 +1,5 @@
 import { Character, PackInfo, TimelineClip } from '../types';
+import localforage from 'localforage';
 
 export interface SavedProject {
   id: string;
@@ -16,6 +17,38 @@ export interface SavedProject {
 
 const STORAGE_KEY_CURRENT = 'cvmodmaker_current_project';
 const STORAGE_KEY_PROJECTS = 'cvmodmaker_saved_projects';
+
+// Initialize a specific localforage instance for media files to keep them separate from other DBs
+export const mediaStorage = localforage.createInstance({
+  name: 'cvmodmaker_media_storage'
+});
+
+export async function saveMediaFileToStorage(projectId: string, type: 'video' | 'backingTrack', file: File | Blob) {
+  try {
+    await mediaStorage.setItem(`${projectId}_${type}`, file);
+  } catch (err) {
+    console.error(`Failed to save ${type} to IndexedDB:`, err);
+  }
+}
+
+export async function loadMediaFileFromStorage(projectId: string, type: 'video' | 'backingTrack'): Promise<File | Blob | null> {
+  try {
+    const file = await mediaStorage.getItem<File | Blob>(`${projectId}_${type}`);
+    return file || null;
+  } catch (err) {
+    console.error(`Failed to load ${type} from IndexedDB:`, err);
+    return null;
+  }
+}
+
+export async function deleteMediaFilesFromStorage(projectId: string) {
+  try {
+    await mediaStorage.removeItem(`${projectId}_video`);
+    await mediaStorage.removeItem(`${projectId}_backingTrack`);
+  } catch (err) {
+    console.error(`Failed to delete media for ${projectId} from IndexedDB:`, err);
+  }
+}
 
 export function saveActiveProjectLocally(
   projectId: string,
@@ -110,6 +143,9 @@ export function deleteSavedProject(id: string): void {
     if (current && current.id === id) {
       localStorage.removeItem(STORAGE_KEY_CURRENT);
     }
+    
+    // Also cleanup media files from IndexedDB
+    deleteMediaFilesFromStorage(id).catch(console.error);
   } catch (err) {
     console.warn('Error deleting project from storage:', err);
   }
