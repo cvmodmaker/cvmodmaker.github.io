@@ -146,14 +146,29 @@ async function convertMp4ToOgv(
     throw new Error('EXPORT_CANCELLED');
   }
 
+  let ffmpeg: FFmpeg | null = null;
+  let progressHandler: ((event: any) => void) | null = null;
+  let abortListener: (() => void) | null = null;
+
   try {
     onProgress?.(2, 'Initializing video engine...');
-    const ffmpeg = await getFFmpeg((msg) => onProgress?.(5, 'Loading video engine...'));
+    ffmpeg = await getFFmpeg((msg) => onProgress?.(5, 'Loading video engine...'));
 
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
-    const progressHandler = ({ progress, time }: { progress: number, time?: number }) => {
-      if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+    // If export is cancelled during ffmpeg operations, terminate worker immediately so it doesn't hang
+    abortListener = () => {
+      try {
+        ffmpeg?.terminate();
+      } catch {
+        // ignore termination error
+      }
+      ffmpegInstance = null;
+    };
+    abortSignal?.addEventListener('abort', abortListener, { once: true });
+
+    progressHandler = ({ progress }: { progress: number }) => {
+      if (abortSignal?.aborted) return; // Do not throw inside event listener to prevent uncaught worker exceptions
       const safeProgress = Number.isFinite(progress) ? progress : 0;
       const progressPercent = Math.min(100, Math.max(0, Math.round(safeProgress * 100)));
       const p = 10 + Math.min(89, Math.max(0, Math.round(safeProgress * 89)));
@@ -162,55 +177,76 @@ async function convertMp4ToOgv(
 
     ffmpeg.on('progress', progressHandler);
 
-    try {
-      onProgress?.(8, 'Reading video...');
-      const inputData = await fetchFile(videoBlob);
+    onProgress?.(8, 'Reading video...');
+    
+    // Read input video data directly into Uint8Array with cancellation check
+    const arrayBuffer = await videoBlob.arrayBuffer();
+    if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+    const inputData = new Uint8Array(arrayBuffer);
 
-      if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+    if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
-      await ffmpeg.writeFile('input.mp4', inputData);
+    await ffmpeg.writeFile('input.mp4', inputData);
 
-      onProgress?.(10, 'Converting MP4 to OGV... 0%');
+    if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
-      // Convert MP4 to true OGV format (Theora video + Vorbis audio)
-      const execResult = await ffmpeg.exec([
-        '-i', 'input.mp4',
-        '-c:v', 'libtheora',
-        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-        '-pix_fmt', 'yuv420p',
-        '-q:v', '6',
-        '-c:a', 'libvorbis',
-        '-ar', '44100',
-        '-q:a', '4',
-        'dub_video.ogv'
-      ]);
-      
-      if (execResult !== 0 && (execResult as any).code !== 0) {
-        throw new Error('OGV_CONVERSION_FAILED');
-      }
+    onProgress?.(10, 'Converting MP4 to OGV... 0%');
 
-      if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+    // Convert MP4 to true OGV format (Theora video + Vorbis audio)
+    const execResult = await ffmpeg.exec([
+      '-i', 'input.mp4',
+      '-c:v', 'libtheora',
+      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+      '-pix_fmt', 'yuv420p',
+      '-q:v', '6',
+      '-c:a', 'libvorbis',
+      '-ar', '44100',
+      '-q:a', '4',
+      'dub_video.ogv'
+    ]);
+    
+    if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
-      const data = await ffmpeg.readFile('dub_video.ogv');
-      
-      try {
-        await ffmpeg.deleteFile('input.mp4');
-        await ffmpeg.deleteFile('dub_video.ogv');
-      } catch {
-        // Ignore file cleanup errors
-      }
-
-      onProgress?.(100, 'Video conversion complete!');
-      return new Blob([data as Uint8Array], { type: 'video/ogg' });
-    } finally {
-      ffmpeg.off('progress', progressHandler);
+    if (execResult !== 0 && (execResult as any).code !== 0) {
+      throw new Error('OGV_CONVERSION_FAILED');
     }
+
+    const data = await ffmpeg.readFile('dub_video.ogv');
+    
+    try {
+      await ffmpeg.deleteFile('input.mp4');
+      await ffmpeg.deleteFile('dub_video.ogv');
+    } catch {
+      // Ignore file cleanup errors
+    }
+
+    onProgress?.(100, 'Video conversion complete!');
+    return new Blob([data as Uint8Array], { type: 'video/ogg' });
   } catch (err: any) {
+    // If cancelled or failed, terminate FFmpeg instance and reset to null
+    try {
+      ffmpeg?.terminate();
+    } catch {
+      // ignore
+    }
+    ffmpegInstance = null;
+
     if (err.message === 'EXPORT_CANCELLED' || abortSignal?.aborted) {
       throw new Error('EXPORT_CANCELLED');
     }
     console.error('FFmpeg transcoding to .ogv failed:', err);
     throw new Error('OGV_CONVERSION_FAILED');
+  } finally {
+    if (abortListener && abortSignal) {
+      abortSignal.removeEventListener('abort', abortListener);
+    }
+    if (ffmpeg && progressHandler) {
+      try {
+        ffmpeg.off('progress', progressHandler);
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 
