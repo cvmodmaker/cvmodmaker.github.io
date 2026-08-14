@@ -124,8 +124,8 @@ export const CharacterManager: React.FC<CharacterManagerProps> = ({
     const ext = editAvatarFilename ? (editAvatarFilename.split('.').pop() || 'png') : (char.avatarFilename?.split('.').pop() || 'png');
     const formattedFilename = `${safeName}_avatar.${ext}`;
 
-    const isDicebear = editAvatarDataUrl?.startsWith('https://api.dicebear.com/');
-    const avatar = editAutoScreenshot ? createAvatarSvgDataUrl(editName.trim(), editColor) : (editAvatarDataUrl && !isDicebear ? editAvatarDataUrl : createAvatarSvgDataUrl(editName.trim(), editColor));
+    const isFallback = editAvatarDataUrl?.startsWith('https://i.ibb.co/');
+    const avatar = editAutoScreenshot ? createAvatarSvgDataUrl(editName.trim(), editColor) : (editAvatarDataUrl && !isFallback ? editAvatarDataUrl : createAvatarSvgDataUrl(editName.trim(), editColor));
 
     const updatedChar: Character = {
       ...char,

@@ -295,7 +295,7 @@ export default function App() {
 
   // Set favicon dynamically
   useEffect(() => {
-    const faviconUrl = "https://i.ibb.co/VWR45rzn/faviconcv.png";
+    const faviconUrl = "https://i.ibb.co/qMLtgW2g/faviconcv.png";
     let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
     if (!link) {
       link = document.createElement("link");

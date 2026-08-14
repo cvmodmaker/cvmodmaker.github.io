@@ -493,8 +493,10 @@ export async function exportModpackZip(
         } else if (parsedExt === 'svg') {
           ext = 'svg';
         }
-      } else if (c.avatarUrl?.includes('dicebear.com') || c.avatarUrl?.endsWith('.svg')) {
+      } else if (c.avatarUrl?.endsWith('.svg')) {
         ext = 'svg';
+      } else if (c.avatarUrl?.includes('faviconcv.png')) {
+        ext = 'png';
       }
       return {
         ...c,
