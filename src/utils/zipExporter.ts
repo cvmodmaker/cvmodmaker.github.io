@@ -214,6 +214,23 @@ async function convertMp4ToOgv(
   }
 }
 
+const DEFAULT_AVATAR_IMAGE_URL = 'https://i.ibb.co/qMLtgW2g/faviconcv.png';
+let cachedDefaultAvatarBlob: Blob | null = null;
+
+async function getDefaultAvatarBlob(): Promise<Blob | null> {
+  if (cachedDefaultAvatarBlob) return cachedDefaultAvatarBlob;
+  try {
+    const resp = await fetch(DEFAULT_AVATAR_IMAGE_URL);
+    if (resp.ok) {
+      cachedDefaultAvatarBlob = await resp.blob();
+      return cachedDefaultAvatarBlob;
+    }
+  } catch (err) {
+    console.warn('Failed to fetch default avatar blob from URL:', err);
+  }
+  return null;
+}
+
 // Helper to fetch blob or data URL into a Blob
 async function getBlobFromUrlOrData(url?: string, existingBlob?: Blob): Promise<Blob | null> {
   if (existingBlob) return existingBlob;
@@ -350,7 +367,7 @@ export async function exportModpackZip(
   const fillerBlob = await getBlobFromUrlOrData(fullPackInfo.fillerImageUrl, fullPackInfo.fillerImageBlob);
   if (fillerBlob) zip.file(fillerFilename, fillerBlob);
 
-  // 5. Add Character Avatars (ALL characters included, preserving original format)
+  // 5. Add Character Avatars (ALL characters included, preserving original format for uploaded files, and providing valid PNG for default/dicebear)
   checkAbort();
   updateProgress('Adding character avatars...', 86);
   for (const char of characters) {
@@ -359,30 +376,33 @@ export async function exportModpackZip(
       continue;
     }
     const safeName = char.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    let avatarUrlToFetch = char.avatarUrl;
-    let isDicebear = false;
-    if (avatarUrlToFetch?.includes('dicebear.com')) {
-      avatarUrlToFetch = 'https://i.ibb.co/qMLtgW2g/faviconcv.png';
-      isDicebear = true;
-    }
-    const charBlob = await getBlobFromUrlOrData(avatarUrlToFetch);
+    const isDicebearOrDefault = !char.avatarFile && (!char.avatarUrl || char.avatarUrl.includes('dicebear') || char.avatarUrl.includes('dicebear.com'));
 
+    let charBlob: Blob | null = null;
     let ext = 'png';
-    const filenameSource = char.originalFilename || char.avatarFilename || char.avatarFile?.name;
-    if (isDicebear) {
+
+    if (isDicebearOrDefault) {
+      charBlob = await getDefaultAvatarBlob();
       ext = 'png';
-    } else if (filenameSource) {
-      const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
-      if (parsedExt && parsedExt !== 'svg' && parsedExt !== 'data') {
-        ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
-      } else if (parsedExt === 'svg') {
-        ext = 'svg';
+    } else {
+      charBlob = char.avatarFile ? char.avatarFile : await getBlobFromUrlOrData(char.avatarUrl);
+      if (!charBlob) {
+        charBlob = await getDefaultAvatarBlob();
+        ext = 'png';
+      } else {
+        const filenameSource = char.originalFilename || char.avatarFilename || char.avatarFile?.name;
+        if (filenameSource) {
+          const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
+          if (parsedExt && parsedExt !== 'data') {
+            ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
+          }
+        } else if (charBlob?.type) {
+          if (charBlob.type.includes('jpeg') || charBlob.type.includes('jpg')) ext = 'jpg';
+          else if (charBlob.type.includes('webp')) ext = 'webp';
+          else if (charBlob.type.includes('gif')) ext = 'gif';
+          else if (charBlob.type.includes('png')) ext = 'png';
+        }
       }
-    } else if (charBlob?.type) {
-      if (charBlob.type.includes('jpeg') || charBlob.type.includes('jpg')) ext = 'jpg';
-      else if (charBlob.type.includes('webp')) ext = 'webp';
-      else if (charBlob.type.includes('gif')) ext = 'gif';
-      else if (charBlob.type.includes('svg')) ext = 'svg';
     }
 
     const filename = `${safeName}_avatar.${ext}`;
@@ -492,19 +512,16 @@ export async function exportModpackZip(
 
     const cleanCharacters = characters.map((c) => {
       const safeName = c.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const isDicebearOrDefault = !c.avatarFile && (!c.avatarUrl || c.avatarUrl.includes('dicebear') || c.avatarUrl.includes('dicebear.com'));
       let ext = 'png';
-      const filenameSource = c.originalFilename || c.avatarFilename || c.avatarFile?.name;
-      if (filenameSource) {
-        const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
-        if (parsedExt && parsedExt !== 'svg' && parsedExt !== 'data') {
-          ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
-        } else if (parsedExt === 'svg') {
-          ext = 'svg';
+      if (!isDicebearOrDefault) {
+        const filenameSource = c.originalFilename || c.avatarFilename || c.avatarFile?.name;
+        if (filenameSource) {
+          const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
+          if (parsedExt && parsedExt !== 'data') {
+            ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
+          }
         }
-      } else if (c.avatarUrl?.includes('dicebear.com')) {
-        ext = 'png';
-      } else if (c.avatarUrl?.endsWith('.svg')) {
-        ext = 'svg';
       }
       return {
         ...c,
