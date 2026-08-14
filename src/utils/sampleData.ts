@@ -4,7 +4,9 @@ import { Character, PackInfo, TimelineClip } from '../types';
  * Generate SVG Data URL for character avatar placeholder
  */
 export function createAvatarSvgDataUrl(name: string, bgColor = '#3b82f6', textColor = '#ffffff'): string {
-  return `https://i.ibb.co/qMLtgW2g/faviconcv.png`;
+  const seed = encodeURIComponent(name || 'Unknown');
+  const bg = bgColor.replace('#', '');
+  return `https://api.dicebear.com/10.x/glyphs/svg?seed=${seed}&backgroundColor=${bg}`;
 }
 
 export const SAMPLE_PACK_INFO: PackInfo = {

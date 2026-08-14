@@ -359,11 +359,19 @@ export async function exportModpackZip(
       continue;
     }
     const safeName = char.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const charBlob = await getBlobFromUrlOrData(char.avatarUrl);
+    let avatarUrlToFetch = char.avatarUrl;
+    let isDicebear = false;
+    if (avatarUrlToFetch?.includes('dicebear.com')) {
+      avatarUrlToFetch = 'https://i.ibb.co/qMLtgW2g/faviconcv.png';
+      isDicebear = true;
+    }
+    const charBlob = await getBlobFromUrlOrData(avatarUrlToFetch);
 
     let ext = 'png';
     const filenameSource = char.originalFilename || char.avatarFilename || char.avatarFile?.name;
-    if (filenameSource) {
+    if (isDicebear) {
+      ext = 'png';
+    } else if (filenameSource) {
       const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
       if (parsedExt && parsedExt !== 'svg' && parsedExt !== 'data') {
         ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
@@ -493,10 +501,10 @@ export async function exportModpackZip(
         } else if (parsedExt === 'svg') {
           ext = 'svg';
         }
+      } else if (c.avatarUrl?.includes('dicebear.com')) {
+        ext = 'png';
       } else if (c.avatarUrl?.endsWith('.svg')) {
         ext = 'svg';
-      } else if (c.avatarUrl?.includes('faviconcv.png')) {
-        ext = 'png';
       }
       return {
         ...c,

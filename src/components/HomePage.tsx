@@ -79,7 +79,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         {currentActiveProject ? (
           <div className="bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
             <div className="flex items-center gap-4">
-              <img src="https://i.ibb.co/PzjnXrhK/vclogo.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain shrink-0" />
+              <img src="https://i.ibb.co/qMLtgW2g/faviconcv.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain shrink-0" />
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 text-[10px] uppercase font-bold text-amber-400 bg-amber-500/20 border border-zinc-800 px-2 py-0.5 rounded-full">
@@ -115,7 +115,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         ) : (
           <div className="bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
             <div className="flex items-center gap-4">
-              <img src="https://i.ibb.co/PzjnXrhK/vclogo.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain shrink-0" />
+              <img src="https://i.ibb.co/qMLtgW2g/faviconcv.png" alt="Game Logo" draggable={false} className="h-12 w-12 object-contain shrink-0" />
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 text-[10px] uppercase font-bold text-amber-400 bg-amber-500/20 border border-zinc-800 px-2 py-0.5 rounded-full">
