@@ -124,6 +124,25 @@ export const GuidelinesModal: React.FC<GuidelinesModalProps> = ({ isOpen, onClos
               </li>
             </ul>
           </div>
+
+          {/* Section 6: Video Conversion & Best Practices */}
+          <div className="bg-zinc-950 p-3 rounded border border-zinc-800 space-y-2">
+            <h3 className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+              <FileCode className="w-4 h-4" />
+              6. Video Encoding & Format Compatibility
+            </h3>
+            <ul className="space-y-1.5 text-zinc-300 text-[11px] list-disc list-inside leading-relaxed">
+              <li>
+                <strong>Recommended Source Video:</strong> For the most stable conversion, always upload a standard MP4 file (<code className="text-amber-300">H.264</code>) as your source video. It is highly recommended to use common framerates (24, 30, 60fps) and standard resolutions (like 1280x720 or 1920x1080). Ensure your video has an audio track, even if it's silent.
+              </li>
+              <li>
+                <strong>Conversion Memory Limits:</strong> The <code className="text-amber-300">.ogv</code> conversion happens entirely inside your browser using WebAssembly. Trying to convert extremely large, long, or 4K videos may crash your browser tab due to memory limits. If possible, compress or downscale your MP4 before importing it into the app.
+              </li>
+              <li>
+                <strong>Automatic Fallback:</strong> If the in-browser conversion engine fails or runs out of memory, the app will safely skip the broken video, package the rest of your Modpack ZIP successfully, and give you a link to manually convert your MP4 to OGV.
+              </li>
+            </ul>
+          </div>
         </div>
 
         {/* Footer */}

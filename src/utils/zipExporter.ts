@@ -152,54 +152,59 @@ async function convertMp4ToOgv(
 
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
-    const progressHandler = ({ progress }: { progress: number }) => {
+    const progressHandler = ({ progress, time }: { progress: number, time?: number }) => {
       if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
-      const p = 10 + Math.min(89, Math.max(0, Math.round(progress * 89)));
-      onProgress?.(p, `Converting MP4 to OGV...`);
+      const safeProgress = Number.isFinite(progress) ? progress : 0;
+      const progressPercent = Math.min(100, Math.max(0, Math.round(safeProgress * 100)));
+      const p = 10 + Math.min(89, Math.max(0, Math.round(safeProgress * 89)));
+      onProgress?.(p, `Converting MP4 to OGV... ${progressPercent}%`);
     };
 
     ffmpeg.on('progress', progressHandler);
 
-    onProgress?.(8, 'Reading video...');
-    const inputData = await fetchFile(videoBlob);
-
-    if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
-
-    await ffmpeg.writeFile('input.mp4', inputData);
-
-    onProgress?.(10, 'Converting MP4 to OGV...');
-
-    // Convert MP4 to true OGV format (Theora video + Vorbis audio)
-    const execResult = await ffmpeg.exec([
-      '-i', 'input.mp4',
-      '-c:v', 'libtheora',
-      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-      '-pix_fmt', 'yuv420p',
-      '-q:v', '6',
-      '-c:a', 'libvorbis',
-      '-ar', '44100',
-      '-q:a', '4',
-      'dub_video.ogv'
-    ]);
-    
-    if (execResult !== 0 && (execResult as any).code !== 0) {
-      throw new Error('OGV_CONVERSION_FAILED');
-    }
-
-    if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
-
-    const data = await ffmpeg.readFile('dub_video.ogv');
-    ffmpeg.off('progress', progressHandler);
-
     try {
-      await ffmpeg.deleteFile('input.mp4');
-      await ffmpeg.deleteFile('dub_video.ogv');
-    } catch {
-      // Ignore file cleanup errors
-    }
+      onProgress?.(8, 'Reading video...');
+      const inputData = await fetchFile(videoBlob);
 
-    onProgress?.(100, 'Video conversion complete!');
-    return new Blob([data as Uint8Array], { type: 'video/ogg' });
+      if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+
+      await ffmpeg.writeFile('input.mp4', inputData);
+
+      onProgress?.(10, 'Converting MP4 to OGV... 0%');
+
+      // Convert MP4 to true OGV format (Theora video + Vorbis audio)
+      const execResult = await ffmpeg.exec([
+        '-i', 'input.mp4',
+        '-c:v', 'libtheora',
+        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+        '-pix_fmt', 'yuv420p',
+        '-q:v', '6',
+        '-c:a', 'libvorbis',
+        '-ar', '44100',
+        '-q:a', '4',
+        'dub_video.ogv'
+      ]);
+      
+      if (execResult !== 0 && (execResult as any).code !== 0) {
+        throw new Error('OGV_CONVERSION_FAILED');
+      }
+
+      if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+
+      const data = await ffmpeg.readFile('dub_video.ogv');
+      
+      try {
+        await ffmpeg.deleteFile('input.mp4');
+        await ffmpeg.deleteFile('dub_video.ogv');
+      } catch {
+        // Ignore file cleanup errors
+      }
+
+      onProgress?.(100, 'Video conversion complete!');
+      return new Blob([data as Uint8Array], { type: 'video/ogg' });
+    } finally {
+      ffmpeg.off('progress', progressHandler);
+    }
   } catch (err: any) {
     if (err.message === 'EXPORT_CANCELLED' || abortSignal?.aborted) {
       throw new Error('EXPORT_CANCELLED');
@@ -362,11 +367,14 @@ export async function exportModpackZip(
       const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
       if (parsedExt && parsedExt !== 'svg' && parsedExt !== 'data') {
         ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
+      } else if (parsedExt === 'svg') {
+        ext = 'svg';
       }
     } else if (charBlob?.type) {
       if (charBlob.type.includes('jpeg') || charBlob.type.includes('jpg')) ext = 'jpg';
       else if (charBlob.type.includes('webp')) ext = 'webp';
       else if (charBlob.type.includes('gif')) ext = 'gif';
+      else if (charBlob.type.includes('svg')) ext = 'svg';
     }
 
     const filename = `${safeName}_avatar.${ext}`;
@@ -482,7 +490,11 @@ export async function exportModpackZip(
         const parsedExt = filenameSource.split('.').pop()?.toLowerCase();
         if (parsedExt && parsedExt !== 'svg' && parsedExt !== 'data') {
           ext = parsedExt === 'jpeg' ? 'jpg' : parsedExt;
+        } else if (parsedExt === 'svg') {
+          ext = 'svg';
         }
+      } else if (c.avatarUrl?.includes('dicebear.com') || c.avatarUrl?.endsWith('.svg')) {
+        ext = 'svg';
       }
       return {
         ...c,
