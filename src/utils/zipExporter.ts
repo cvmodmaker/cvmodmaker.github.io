@@ -202,8 +202,10 @@ async function convertMp4ToOgv(
       if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
       await ffmpeg.writeFile('input_audio', new Uint8Array(audioArrayBuffer));
       execArgs.push('-i', 'input_audio');
-      execArgs.push('-filter_complex', '[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v];[1:a]apad[a]');
-      execArgs.push('-map', '[v]', '-map', '[a]', '-shortest');
+      // Use simple video scale filter and map audio directly from the audio track.
+      // Avoid apad (audio padding) which causes FFmpeg WASM to stall at end of encoding.
+      execArgs.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
+      execArgs.push('-map', '0:v', '-map', '1:a', '-shortest');
     } else {
       execArgs.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
     }
@@ -272,7 +274,7 @@ let cachedDefaultAvatarBlob: Blob | null = null;
 async function getDefaultAvatarBlob(): Promise<Blob | null> {
   if (cachedDefaultAvatarBlob) return cachedDefaultAvatarBlob;
   try {
-    const resp = await fetch(DEFAULT_AVATAR_IMAGE_URL);
+    const resp = await fetchWithTimeout(DEFAULT_AVATAR_IMAGE_URL, 5000);
     if (resp.ok) {
       cachedDefaultAvatarBlob = await resp.blob();
       return cachedDefaultAvatarBlob;
@@ -284,12 +286,22 @@ async function getDefaultAvatarBlob(): Promise<Blob | null> {
 }
 
 // Helper to fetch blob or data URL into a Blob
+async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 async function getBlobFromUrlOrData(url?: string, existingBlob?: Blob): Promise<Blob | null> {
   if (existingBlob) return existingBlob;
   if (!url) return null;
   if (url.startsWith('data:image')) {
     try {
-      const resp = await fetch(url);
+      const resp = await fetchWithTimeout(url);
       return await resp.blob();
     } catch {
       return null;
@@ -297,7 +309,7 @@ async function getBlobFromUrlOrData(url?: string, existingBlob?: Blob): Promise<
   }
   if (url.startsWith('blob:') || url.startsWith('http')) {
     try {
-      const resp = await fetch(url);
+      const resp = await fetchWithTimeout(url);
       return await resp.blob();
     } catch {
       return null;
@@ -360,7 +372,7 @@ export async function exportModpackZip(
       rawVideoBlob = videoMedia.file;
     } else if (videoMedia?.url) {
       try {
-        const resp = await fetch(videoMedia.url);
+        const resp = await fetchWithTimeout(videoMedia.url);
         rawVideoBlob = await resp.blob();
       } catch {
         console.warn('Could not fetch video blob');
@@ -373,7 +385,7 @@ export async function exportModpackZip(
         rawAudioBlob = audioTrackMedia.file;
       } else if (audioTrackMedia?.url) {
         try {
-          const resp = await fetch(audioTrackMedia.url);
+          const resp = await fetchWithTimeout(audioTrackMedia.url);
           rawAudioBlob = await resp.blob();
         } catch {
           console.warn('Could not fetch audio track blob');
@@ -414,7 +426,7 @@ export async function exportModpackZip(
   } else if (backingTrackMedia?.url) {
     updateProgress('Adding backing track...', 82);
     try {
-      const resp = await fetch(backingTrackMedia.url);
+      const resp = await fetchWithTimeout(backingTrackMedia.url);
       const blob = await resp.blob();
       zip.file('_backing_track.wav', blob);
     } catch {
@@ -431,7 +443,7 @@ export async function exportModpackZip(
   } else if (audioTrackMedia?.url) {
     updateProgress('Adding audio track...', 83);
     try {
-      const resp = await fetch(audioTrackMedia.url);
+      const resp = await fetchWithTimeout(audioTrackMedia.url);
       const blob = await resp.blob();
       zip.file('_audio_track.wav', blob);
     } catch {
@@ -503,9 +515,10 @@ export async function exportModpackZip(
     const stepPercent = 88 + Math.floor((i / Math.max(1, totalClips)) * 5);
 
     // Dynamically auto-screenshot if the character's autoScreenshot is enabled
+    // but only if the user hasn't manually picked a specific image for this clip
     const primaryChar = clip.dubCharacters[0];
     const charObj = characters.find((c) => c.name === primaryChar);
-    if (charObj?.autoScreenshot) {
+    if (charObj?.autoScreenshot && !clip.manualImage) {
       try {
         const charClips = clips
           .filter(c => c.dubCharacters[0] === primaryChar)
@@ -521,7 +534,13 @@ export async function exportModpackZip(
 
         updateProgress(`Capturing frame ${i + 1}/${totalClips}...`, stepPercent);
 
-        const capturedUrl = await captureFrameAtTime(clip.startTime, videoMedia?.url);
+        const captureTimeout = new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('Frame capture timed out')), 5000)
+        );
+        const capturedUrl = await Promise.race([
+          captureFrameAtTime(clip.startTime, videoMedia?.url),
+          captureTimeout,
+        ]);
         if (capturedUrl) {
           clip.imageUrl = capturedUrl;
         }
@@ -546,6 +565,19 @@ export async function exportModpackZip(
     // Generate sliced WAV audio file if video/audio buffer exists
     let clipAudioBlob: Blob | undefined = clip.audioBlob;
 
+    if (!clipAudioBlob && audioTrackMedia?.audioBuffer) {
+      try {
+        const slicedBuffer = sliceAudioBuffer(
+          audioTrackMedia.audioBuffer,
+          clip.startTime,
+          clip.endTime
+        );
+        clipAudioBlob = audioBufferToWavBlob(slicedBuffer);
+      } catch (e) {
+        console.error(`Error slicing audio track for clip ${clipBaseName}:`, e);
+      }
+    }
+    
     if (!clipAudioBlob && videoMedia?.audioBuffer) {
       try {
         const slicedBuffer = sliceAudioBuffer(

@@ -495,7 +495,7 @@ export const ClipInspector: React.FC<ClipInspectorProps> = ({
                       const file = e.target.files?.[0];
                       if (file) {
                         const url = URL.createObjectURL(file);
-                        onUpdateClip(selectedClip.id, { imageUrl: url, imageFilename: file.name });
+                        onUpdateClip(selectedClip.id, { imageUrl: url, imageFilename: file.name, manualImage: true });
                       }
                     }}
                   />
@@ -513,7 +513,7 @@ export const ClipInspector: React.FC<ClipInspectorProps> = ({
                     if (ctx) {
                       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                       const dataUrl = canvas.toDataURL('image/jpeg');
-                      onUpdateClip(selectedClip.id, { imageUrl: dataUrl, imageFilename: `frame_${currentTime.toFixed(2)}.jpg` });
+                      onUpdateClip(selectedClip.id, { imageUrl: dataUrl, imageFilename: `frame_${currentTime.toFixed(2)}.jpg`, manualImage: true });
                     }
                   }}
                   className={`flex-1 px-2.5 py-1.5 border rounded-lg text-[10px] text-center transition-colors ${

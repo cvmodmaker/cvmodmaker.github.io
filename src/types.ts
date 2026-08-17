@@ -27,6 +27,7 @@ export interface TimelineClip {
   captionOffset?: { x: number; y: number };
   captionAlign?: 'left' | 'center' | 'right';
   capturedAtTime?: number;
+  manualImage?: boolean; // If true, user manually uploaded this image — do not auto-overwrite
 }
 
 export interface PackInfo {

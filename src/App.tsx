@@ -764,7 +764,8 @@ export default function App() {
     let needsFilenameUpdate = false;
     const alignedClips = clips.map((clip) => {
       const primaryChar = clip.dubCharacters[0];
-      if (primaryChar && autoScreenshotChars.has(primaryChar)) {
+      // Skip filename sync if the user manually uploaded an image
+      if (primaryChar && autoScreenshotChars.has(primaryChar) && !clip.manualImage) {
         const charClips = clips
           .filter((c) => c.dubCharacters[0] === primaryChar)
           .sort((a, b) => a.startTime - b.startTime);
@@ -794,6 +795,9 @@ export default function App() {
       const primaryChar = clip.dubCharacters[0];
       const charObj = characters.find((c) => c.name === primaryChar);
       if (!charObj?.autoScreenshot) return false;
+
+      // Never overwrite an image the user manually uploaded
+      if (clip.manualImage) return false;
 
       const needsCapture =
         !clip.imageUrl ||
