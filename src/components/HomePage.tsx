@@ -9,6 +9,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Search,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { SavedProject, getSavedProjectsList, deleteSavedProject } from '../utils/projectStorage';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
@@ -30,14 +32,22 @@ export const HomePage: React.FC<HomePageProps> = ({
 }) => {
   const [projectsList, setProjectsList] = useState<SavedProject[]>(getSavedProjectsList());
   const [searchTerm, setSearchTerm] = useState('');
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteSavedProject(id);
-    setProjectsList(getSavedProjectsList());
-    if (onDeleteProject) {
-      onDeleteProject(id);
+    setProjectToDelete(id);
+  };
+
+  const confirmDelete = () => {
+    if (projectToDelete) {
+      deleteSavedProject(projectToDelete);
+      setProjectsList(getSavedProjectsList());
+      if (onDeleteProject) {
+        onDeleteProject(projectToDelete);
+      }
+      setProjectToDelete(null);
     }
   };
 
@@ -302,6 +312,50 @@ export const HomePage: React.FC<HomePageProps> = ({
           )}
         </section>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#121214] border border-zinc-800 rounded-xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-zinc-100 font-bold text-base">Delete Project</h3>
+                  <p className="text-zinc-400 text-xs">Irreversible action</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setProjectToDelete(null)}
+                className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <p className="text-sm text-zinc-300 py-2">
+              Are you sure you want to delete this project? All unsaved or unexported data will be lost forever.
+            </p>
+            
+            <div className="flex items-center justify-end gap-3 mt-2">
+              <button
+                onClick={() => setProjectToDelete(null)}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-red-500 hover:bg-red-600 text-white transition-colors border-none shadow-md shadow-red-500/20 cursor-pointer"
+              >
+                Yes, delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
