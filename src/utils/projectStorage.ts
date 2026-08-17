@@ -13,6 +13,8 @@ export interface SavedProject {
   videoMediaUrl?: string;
   backingTrackName?: string;
   backingTrackUrl?: string;
+  audioTrackName?: string;
+  audioTrackUrl?: string;
 }
 
 const STORAGE_KEY_CURRENT = 'cvmodmaker_current_project';
@@ -23,7 +25,7 @@ export const mediaStorage = localforage.createInstance({
   name: 'cvmodmaker_media_storage'
 });
 
-export async function saveMediaFileToStorage(projectId: string, type: 'video' | 'backingTrack', file: File | Blob) {
+export async function saveMediaFileToStorage(projectId: string, type: 'video' | 'backingTrack' | 'audioTrack', file: File | Blob) {
   try {
     await mediaStorage.setItem(`${projectId}_${type}`, file);
   } catch (err) {
@@ -31,7 +33,7 @@ export async function saveMediaFileToStorage(projectId: string, type: 'video' | 
   }
 }
 
-export async function loadMediaFileFromStorage(projectId: string, type: 'video' | 'backingTrack'): Promise<File | Blob | null> {
+export async function loadMediaFileFromStorage(projectId: string, type: 'video' | 'backingTrack' | 'audioTrack'): Promise<File | Blob | null> {
   try {
     const file = await mediaStorage.getItem<File | Blob>(`${projectId}_${type}`);
     return file || null;
@@ -45,6 +47,7 @@ export async function deleteMediaFilesFromStorage(projectId: string) {
   try {
     await mediaStorage.removeItem(`${projectId}_video`);
     await mediaStorage.removeItem(`${projectId}_backingTrack`);
+    await mediaStorage.removeItem(`${projectId}_audioTrack`);
   } catch (err) {
     console.error(`Failed to delete media for ${projectId} from IndexedDB:`, err);
   }
@@ -57,8 +60,10 @@ export function saveActiveProjectLocally(
   clips: TimelineClip[],
   videoMediaName?: string,
   backingTrackName?: string,
+  audioTrackName?: string,
   videoMediaUrl?: string,
-  backingTrackUrl?: string
+  backingTrackUrl?: string,
+  audioTrackUrl?: string
 ): SavedProject {
   // Clean temporary blob object URLs while keeping persistent data/http URLs
   const sanitizeUrl = (url?: string, defaultFallback?: string) => {
@@ -96,6 +101,8 @@ export function saveActiveProjectLocally(
     videoMediaUrl: sanitizeUrl(videoMediaUrl),
     backingTrackName,
     backingTrackUrl: sanitizeUrl(backingTrackUrl),
+    audioTrackName,
+    audioTrackUrl: sanitizeUrl(audioTrackUrl),
   };
 
   try {

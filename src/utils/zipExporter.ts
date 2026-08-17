@@ -135,7 +135,8 @@ export const captureFrameAtTime = (
 
 async function convertMp4ToOgv(
   videoBlob: Blob,
-  onProgress?: (progressPercent: number, statusMsg?: string) => void,
+  audioBlob?: Blob,
+  onProgress?: (progressPercent: number, statusMsg?: void | string) => void,
   abortSignal?: AbortSignal
 ): Promise<Blob> {
   if (videoBlob.type === 'video/ogg' || videoBlob.type === 'video/ogv') {
@@ -192,18 +193,33 @@ async function convertMp4ToOgv(
 
     onProgress?.(10, 'Converting MP4 to OGV... 0%');
 
-    // Convert MP4 to true OGV format (Theora video + Vorbis audio)
-    const execResult = await ffmpeg.exec([
-      '-i', 'input.mp4',
+    const execArgs = [
+      '-i', 'input.mp4'
+    ];
+
+    if (audioBlob) {
+      const audioArrayBuffer = await audioBlob.arrayBuffer();
+      if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
+      await ffmpeg.writeFile('input_audio', new Uint8Array(audioArrayBuffer));
+      execArgs.push('-i', 'input_audio');
+      execArgs.push('-filter_complex', '[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v];[1:a]apad[a]');
+      execArgs.push('-map', '[v]', '-map', '[a]', '-shortest');
+    } else {
+      execArgs.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
+    }
+
+    execArgs.push(
       '-c:v', 'libtheora',
-      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
       '-pix_fmt', 'yuv420p',
       '-q:v', '6',
       '-c:a', 'libvorbis',
       '-ar', '44100',
       '-q:a', '4',
       'dub_video.ogv'
-    ]);
+    );
+
+    // Convert MP4 to true OGV format (Theora video + Vorbis audio)
+    const execResult = await ffmpeg.exec(execArgs);
     
     if (abortSignal?.aborted) throw new Error('EXPORT_CANCELLED');
 
@@ -221,7 +237,7 @@ async function convertMp4ToOgv(
     }
 
     onProgress?.(100, 'Video conversion complete!');
-    return new Blob([data as Uint8Array], { type: 'video/ogg' });
+    return new Blob([data as any], { type: 'video/ogg' });
   } catch (err: any) {
     // If cancelled or failed, terminate FFmpeg instance and reset to null
     try {
@@ -296,6 +312,7 @@ export async function exportModpackZip(
   clips: TimelineClip[],
   videoMedia?: MediaSource,
   backingTrackMedia?: MediaSource,
+  audioTrackMedia?: MediaSource,
   onProgress?: (progress: ZipExportProgress) => void,
   abortSignal?: AbortSignal
 ): Promise<{ archive: Blob; ogvFailed: boolean }> {
@@ -351,10 +368,23 @@ export async function exportModpackZip(
     }
 
     if (rawVideoBlob) {
+      let rawAudioBlob: Blob | undefined = undefined;
+      if (audioTrackMedia?.file) {
+        rawAudioBlob = audioTrackMedia.file;
+      } else if (audioTrackMedia?.url) {
+        try {
+          const resp = await fetch(audioTrackMedia.url);
+          rawAudioBlob = await resp.blob();
+        } catch {
+          console.warn('Could not fetch audio track blob');
+        }
+      }
+
       updateProgress('Preparing video engine...', 10);
       try {
         const ogvBlob = await convertMp4ToOgv(
           rawVideoBlob,
+          rawAudioBlob,
           (p, statusMsg) => {
             checkAbort();
             const targetOverallPercent = 10 + ((p / 100) * 70);
@@ -389,6 +419,23 @@ export async function exportModpackZip(
       zip.file('_backing_track.wav', blob);
     } catch {
       console.warn('Could not fetch backing track blob');
+    }
+  }
+
+  // 3.5 Add Audio Track if present
+  checkAbort();
+  if (audioTrackMedia?.file) {
+    updateProgress('Adding audio track...', 83);
+    const ext = audioTrackMedia.file.name.split('.').pop() || 'wav';
+    zip.file(`_audio_track.${ext}`, audioTrackMedia.file);
+  } else if (audioTrackMedia?.url) {
+    updateProgress('Adding audio track...', 83);
+    try {
+      const resp = await fetch(audioTrackMedia.url);
+      const blob = await resp.blob();
+      zip.file('_audio_track.wav', blob);
+    } catch {
+      console.warn('Could not fetch audio track blob');
     }
   }
 

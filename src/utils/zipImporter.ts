@@ -9,6 +9,7 @@ export interface DraftState {
   clips: TimelineClip[];
   videoMedia?: MediaSource;
   backingTrackMedia?: MediaSource;
+  audioTrackMedia?: MediaSource;
   missingFiles?: string[];
 }
 
@@ -84,6 +85,16 @@ export async function importDraftZip(file: File): Promise<DraftState> {
       draftState.backingTrackMedia = {
         type: 'audio',
         name: bName,
+        duration: parsed.duration || 20,
+      };
+    }
+
+    if (parsed.audioTrackName || parsed.audioTrackPath) {
+      const aName = parsed.audioTrackName || parsed.audioTrackPath?.split(/[/\\]/).pop() || '_audio_track.wav';
+      missingFiles.push(aName);
+      draftState.audioTrackMedia = {
+        type: 'audio',
+        name: aName,
         duration: parsed.duration || 20,
       };
     }
@@ -342,6 +353,24 @@ export async function importDraftZip(file: File): Promise<DraftState> {
       };
     }
 
+    // 7.5 Re-hydrate Audio Track
+    const audioZipFile =
+      zip.file('_audio_track.wav') ||
+      zip.file('_audio_track.mp3') ||
+      Object.values(zip.files).find((f) => !f.dir && f.name.startsWith('_audio_track'));
+
+    if (audioZipFile) {
+      const aBlob = await audioZipFile.async('blob');
+      const aFile = new File([aBlob], audioZipFile.name, { type: 'audio/wav' });
+      draftState.audioTrackMedia = {
+        type: 'audio',
+        file: aFile,
+        name: aFile.name,
+        url: URL.createObjectURL(aBlob),
+        duration: 20,
+      };
+    }
+
     return draftState;
 
   // Fallback: Parse standard modpack zip without _draft_project.json
@@ -566,13 +595,32 @@ async function parseStandardModpackZip(zip: JSZip, fileTitle: string): Promise<D
     Object.values(zip.files).find((f) => !f.dir && f.name.startsWith('_backing_track'));
 
   if (backingZipFile) {
-    const bBlob = await backingZipFile.async('blob');
-    const bFile = new File([bBlob], backingZipFile.name, { type: 'audio/wav' });
-    backingTrackMedia = {
+      const bBlob = await backingZipFile.async('blob');
+      const bFile = new File([bBlob], backingZipFile.name, { type: 'audio/wav' });
+      backingTrackMedia = {
+        type: 'audio',
+        file: bFile,
+        name: bFile.name,
+        url: URL.createObjectURL(bBlob),
+        duration: 20,
+      };
+  }
+
+  // 7. Audio Track
+  let audioTrackMedia: MediaSource | undefined = undefined;
+  const audioZipFile =
+    zip.file('_audio_track.wav') ||
+    zip.file('_audio_track.mp3') ||
+    Object.values(zip.files).find((f) => !f.dir && f.name.startsWith('_audio_track'));
+
+  if (audioZipFile) {
+    const aBlob = await audioZipFile.async('blob');
+    const aFile = new File([aBlob], audioZipFile.name, { type: 'audio/wav' });
+    audioTrackMedia = {
       type: 'audio',
-      file: bFile,
-      name: bFile.name,
-      url: URL.createObjectURL(bBlob),
+      file: aFile,
+      name: aFile.name,
+      url: URL.createObjectURL(aBlob),
       duration: 20,
     };
   }
@@ -583,5 +631,6 @@ async function parseStandardModpackZip(zip: JSZip, fileTitle: string): Promise<D
     clips,
     videoMedia,
     backingTrackMedia,
+    audioTrackMedia,
   };
 }

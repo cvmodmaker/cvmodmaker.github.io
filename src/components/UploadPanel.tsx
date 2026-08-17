@@ -1,18 +1,21 @@
 import React, { useRef } from 'react';
-import { Film, Music, Image as ImageIcon, Trash2, Upload, AlertTriangle } from 'lucide-react';
+import { Film, Music, Mic, Image as ImageIcon, Trash2, Upload, AlertTriangle } from 'lucide-react';
 import { MediaSource, PackInfo } from '../types';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 interface UploadPanelProps {
   videoMedia?: MediaSource;
   backingTrackMedia?: MediaSource;
+  audioTrackMedia?: MediaSource;
   packInfo: PackInfo;
   onUploadVideo: (file: File) => void;
   onUploadBackingTrack: (file: File) => void;
+  onUploadAudioTrack: (file: File) => void;
   onUploadPackIcon: (file: File) => void;
   onUploadFillerImage: (file: File) => void;
   onRemoveVideo: () => void;
   onRemoveBackingTrack: () => void;
+  onRemoveAudioTrack: () => void;
   onRemovePackIcon: () => void;
   onRemoveFillerImage: () => void;
 }
@@ -20,18 +23,22 @@ interface UploadPanelProps {
 export const UploadPanel: React.FC<UploadPanelProps> = ({
   videoMedia,
   backingTrackMedia,
+  audioTrackMedia,
   packInfo,
   onUploadVideo,
   onUploadBackingTrack,
+  onUploadAudioTrack,
   onUploadPackIcon,
   onUploadFillerImage,
   onRemoveVideo,
   onRemoveBackingTrack,
+  onRemoveAudioTrack,
   onRemovePackIcon,
   onRemoveFillerImage,
 }) => {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const audioTrackInputRef = useRef<HTMLInputElement>(null);
   const iconInputRef = useRef<HTMLInputElement>(null);
   const fillerInputRef = useRef<HTMLInputElement>(null);
 
@@ -128,7 +135,7 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
       <div className="space-y-1">
         <div className="flex items-center justify-between text-zinc-300 font-medium">
           <span className="flex items-center gap-1.5">
-            <Music className="w-3.5 h-3.5 text-amber-400" />
+            <Music className="w-3.5 h-3.5 text-blue-400" />
             Backing Track <span className="text-[10px] text-zinc-400 font-sans">(_backing_track)</span>
           </span>
           <span className="text-[10px] text-zinc-400">Optional</span>
@@ -159,7 +166,7 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => handleFileDrop(e, onUploadBackingTrack)}
             onClick={() => audioInputRef.current?.click()}
-            className="border-2 border-dashed border-zinc-800 hover:border-amber-500 bg-zinc-950/50 p-2.5 rounded text-center cursor-pointer transition-colors"
+            className="border-2 border-dashed border-zinc-800 hover:border-blue-500 bg-zinc-950/50 p-2.5 rounded text-center cursor-pointer transition-colors"
           >
             <input
               ref={audioInputRef}
@@ -190,6 +197,66 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
             Need to remove vocals? Try VocalRemover.org
           </a>
         </div>
+      </div>
+
+      {/* 2.5 Optional Audio Track (_audio_track) */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-zinc-300 font-medium">
+          <span className="flex items-center gap-1.5">
+            <Mic className="w-3.5 h-3.5 text-green-400" />
+            Audio Track <span className="text-[10px] text-zinc-400 font-sans">(_audio_track)</span>
+          </span>
+          <span className="text-[10px] text-zinc-400">Optional</span>
+        </div>
+
+        {audioTrackMedia ? (
+          <div className="flex items-center justify-between bg-zinc-950 p-2 rounded border border-zinc-800">
+            <div className="truncate max-w-[180px]">
+              <p className="font-medium text-zinc-200 truncate">{audioTrackMedia.name}</p>
+              <p className="text-[10px] text-zinc-400 font-sans">
+                Duration: {audioTrackMedia.duration.toFixed(2)}s
+              </p>
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onRemoveAudioTrack}
+                  className="p-1 text-zinc-400 hover:text-red-400 transition-colors backdrop-blur-sm"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Remove Audio Track</TooltipContent>
+            </Tooltip>
+          </div>
+        ) : (
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleFileDrop(e, onUploadAudioTrack)}
+            onClick={() => audioTrackInputRef.current?.click()}
+            className="border-2 border-dashed border-zinc-800 hover:border-green-500 bg-zinc-950/50 p-2.5 rounded text-center cursor-pointer transition-colors"
+          >
+            <input
+              ref={audioTrackInputRef}
+              type="file"
+              accept=".wav,.mp3,.ogg,audio/wav,audio/mpeg,audio/ogg"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  const file = e.target.files[0];
+                  const ext = file.name.split('.').pop() || 'wav';
+                  const renamedFile = new File([file], `_audio_track.${ext}`, { type: file.type });
+                  onUploadAudioTrack(renamedFile);
+                }
+              }}
+            />
+            <Mic className="w-4 h-4 mx-auto text-zinc-500 mb-1" />
+            <p className="text-zinc-300 font-medium text-[11px]">Upload Final Audio Track</p>
+            <p className="text-[10px] text-zinc-400 font-sans mt-0.5">
+              Intended for pure audio and will become the final audio of the .ogv
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Guidance Note */}

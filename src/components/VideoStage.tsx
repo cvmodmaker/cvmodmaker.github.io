@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 interface VideoStageProps {
   videoUrl?: string;
   backingTrackUrl?: string;
+  audioTrackUrl?: string;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -25,6 +26,7 @@ interface VideoStageProps {
 export const VideoStage: React.FC<VideoStageProps> = ({
   videoUrl,
   backingTrackUrl,
+  audioTrackUrl,
   currentTime,
   duration,
   isPlaying,
@@ -42,6 +44,7 @@ export const VideoStage: React.FC<VideoStageProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const backingAudioRef = useRef<HTMLAudioElement>(null);
+  const audioTrackRef = useRef<HTMLAudioElement>(null);
   const lastUpdateTimeRef = useRef<number>(0);
   const [isScrubbing, setIsScrubbing] = React.useState(false);
 
@@ -208,6 +211,15 @@ export const VideoStage: React.FC<VideoStageProps> = ({
     }
   }, [currentTime, isScrubbing, isPlaying]);
 
+  useEffect(() => {
+    if (!audioTrackRef.current || isScrubbing) return;
+    const drift = Math.abs(audioTrackRef.current.currentTime - currentTime);
+    const threshold = isPlaying ? 0.2 : 0.001;
+    if (drift > threshold) {
+      audioTrackRef.current.currentTime = currentTime;
+    }
+  }, [currentTime, isScrubbing, isPlaying]);
+
   // Sync play/pause state
   useEffect(() => {
     if (videoRef.current) {
@@ -222,6 +234,13 @@ export const VideoStage: React.FC<VideoStageProps> = ({
         backingAudioRef.current.play().catch(() => {});
       } else {
         backingAudioRef.current.pause();
+      }
+    }
+    if (audioTrackRef.current) {
+      if (isPlaying && !isScrubbing && !isBackingTrackOnly) {
+        audioTrackRef.current.play().catch(() => {});
+      } else {
+        audioTrackRef.current.pause();
       }
     }
   }, [isPlaying, isScrubbing, isBackingTrackOnly]);
@@ -265,6 +284,9 @@ export const VideoStage: React.FC<VideoStageProps> = ({
     if (backingAudioRef.current) {
       backingAudioRef.current.currentTime = time;
     }
+    if (audioTrackRef.current) {
+      audioTrackRef.current.currentTime = time;
+    }
   };
 
   const isUpperHalf = localCaptionOffset.y > 0;
@@ -276,6 +298,16 @@ export const VideoStage: React.FC<VideoStageProps> = ({
         <audio
           ref={backingAudioRef}
           src={backingTrackUrl}
+          muted={isMuted}
+          playsInline
+        />
+      )}
+
+      {/* Optional Hidden Audio Track Element */}
+      {audioTrackUrl && (
+        <audio
+          ref={audioTrackRef}
+          src={audioTrackUrl}
           muted={isMuted}
           playsInline
         />
@@ -346,7 +378,7 @@ export const VideoStage: React.FC<VideoStageProps> = ({
             ref={videoRef}
             id="main-video-player"
             src={videoUrl}
-            muted={isMuted || isBackingTrackOnly}
+            muted={isMuted || isBackingTrackOnly || !!audioTrackUrl}
             playsInline
             className="absolute inset-0 w-full h-full object-contain"
             onEnded={() => {
