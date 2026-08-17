@@ -434,40 +434,98 @@ export const ClipInspector: React.FC<ClipInspectorProps> = ({
         </div>
 
         {/* 5. Associated Image Selection */}
-        <div className="space-y-1">
+        <div className="space-y-2">
           <label className="text-[10px] text-zinc-400 font-semibold flex items-center justify-between gap-1">
             <span className="flex items-center gap-1">
               <ImageIcon className="w-3 h-3 text-amber-400" />
-              Clip Image Filename <span className="text-amber-400 font-sans text-[11px]">(image)</span>
+              Clip Image <span className="text-amber-400 font-sans text-[11px]">(image)</span>
             </span>
           </label>
-          <div className="flex gap-1.5">
-            <input
-              type="text"
-              value={selectedClip.imageFilename || ''}
-              onChange={(e) => onUpdateClip(selectedClip.id, { imageFilename: e.target.value })}
-              placeholder="e.g. buzz.png"
-              className="flex-1 bg-zinc-950 border border-zinc-800/80 rounded-lg px-2.5 py-1.5 text-zinc-100 font-sans text-xs focus:outline-none focus:border-amber-500"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
+          
+          <div className="flex gap-2">
+            <div className="w-16 h-16 bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+              {(() => {
+                const primaryCharObj = characters.find((c) => c.name === selectedClip?.dubCharacters?.[0]);
+                const displayImg = selectedClip?.imageUrl || primaryCharObj?.avatarUrl;
+                if (displayImg) {
+                  return <img src={displayImg} alt="Clip" className="w-full h-full object-cover" />;
+                }
+                return <ImageIcon className="w-6 h-6 text-zinc-700" />;
+              })()}
+            </div>
+            
+            <div className="flex flex-col gap-1.5 flex-1">
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={selectedClip.imageFilename || ''}
+                  onChange={(e) => onUpdateClip(selectedClip.id, { imageFilename: e.target.value })}
+                  placeholder="e.g. buzz.png"
+                  className="flex-1 bg-zinc-950 border border-zinc-800/80 rounded-lg px-2.5 py-1.5 text-zinc-100 font-sans text-xs focus:outline-none focus:border-amber-500"
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const primaryCharName = selectedClip?.dubCharacters?.[0];
+                        const primaryCharObj = characters.find((c) => c.name === primaryCharName);
+                        const autoImg = primaryCharObj
+                          ? (primaryCharObj.avatarFilename || `${primaryCharObj.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_avatar.png`)
+                          : 'default.png';
+                        onUpdateClip(selectedClip.id, { imageFilename: autoImg, imageUrl: undefined });
+                      }}
+                      className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/50 text-amber-400 font-bold rounded-lg text-[10px] transition-colors cursor-pointer shrink-0"
+                    >
+                      Auto
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reset to primary character's avatar image filename</TooltipContent>
+                </Tooltip>
+              </div>
+
+              <div className="flex gap-1.5">
+                <label className="flex-1 px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-lg text-[10px] text-center cursor-pointer transition-colors">
+                  Upload Image
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const url = URL.createObjectURL(file);
+                        onUpdateClip(selectedClip.id, { imageUrl: url, imageFilename: file.name, manualImage: true });
+                      }
+                    }}
+                  />
+                </label>
                 <button
                   type="button"
+                  disabled={!hasVideo}
                   onClick={() => {
-                    const primaryCharName = selectedClip.dubCharacters[0];
-                    const primaryCharObj = characters.find((c) => c.name === primaryCharName);
-                    const autoImg = primaryCharObj
-                      ? (primaryCharObj.avatarFilename || `${primaryCharObj.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_avatar.png`)
-                      : 'default.png';
-                    onUpdateClip(selectedClip.id, { imageFilename: autoImg });
+                    const video = document.getElementById('main-video-player') as HTMLVideoElement;
+                    if (!video) return;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                      const dataUrl = canvas.toDataURL('image/jpeg');
+                      onUpdateClip(selectedClip.id, { imageUrl: dataUrl, imageFilename: `frame_${currentTime.toFixed(2)}.jpg`, manualImage: true });
+                    }
                   }}
-                  className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/50 text-amber-400 font-bold rounded-lg text-[10px] transition-colors cursor-pointer shrink-0"
+                  className={`flex-1 px-2.5 py-1.5 border rounded-lg text-[10px] text-center transition-colors ${
+                    hasVideo 
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30 cursor-pointer' 
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-600 opacity-50 cursor-not-allowed'
+                  }`}
                 >
-                  Auto
+                  Use this frame
                 </button>
-              </TooltipTrigger>
-              <TooltipContent>Reset to primary character's avatar image filename</TooltipContent>
-            </Tooltip>
+              </div>
+            </div>
           </div>
         </div>
 

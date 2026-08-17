@@ -91,6 +91,7 @@ export default function App() {
   // Media Sources
   const [videoMedia, setVideoMedia] = useState<MediaSource | undefined>();
   const [backingTrackMedia, setBackingTrackMedia] = useState<MediaSource | undefined>();
+  const [audioTrackMedia, setAudioTrackMedia] = useState<MediaSource | undefined>();
 
   // Timeline / Playback State
   const [currentTime, setCurrentTime] = useState(0);
@@ -116,11 +117,13 @@ export default function App() {
       clips,
       videoMedia?.name,
       backingTrackMedia?.name,
+      audioTrackMedia?.name,
       videoMedia?.url,
-      backingTrackMedia?.url
+      backingTrackMedia?.url,
+      audioTrackMedia?.url
     );
     setHasActiveProject(true);
-  }, [projectId, packInfo, characters, clips, videoMedia, backingTrackMedia, view]);
+  }, [projectId, packInfo, characters, clips, videoMedia, backingTrackMedia, audioTrackMedia, view]);
 
   const handleDeleteProject = (deletedId: string) => {
     deleteSavedProject(deletedId);
@@ -137,6 +140,7 @@ export default function App() {
       setClips([]);
       setVideoMedia(undefined);
       setBackingTrackMedia(undefined);
+      setAudioTrackMedia(undefined);
       setCurrentTime(0);
       setDuration(0);
       setSelectedClipId(undefined);
@@ -160,11 +164,13 @@ export default function App() {
     // Check IndexedDB for persisted media
     const persistedVideo = await loadMediaFileFromStorage(project.id, 'video');
     const persistedBackingTrack = await loadMediaFileFromStorage(project.id, 'backingTrack');
+    const persistedAudioTrack = await loadMediaFileFromStorage(project.id, 'audioTrack');
 
     const missingFiles: string[] = [];
     
     if (project.videoMediaName && !persistedVideo) missingFiles.push(project.videoMediaName);
     if (project.backingTrackName && !persistedBackingTrack) missingFiles.push(project.backingTrackName);
+    if (project.audioTrackName && !persistedAudioTrack) missingFiles.push(project.audioTrackName);
     
     project.characters?.forEach(c => {
       const charName = c.originalFilename || c.avatarFilename;
@@ -237,6 +243,21 @@ export default function App() {
       });
     } else {
       setBackingTrackMedia(undefined);
+    }
+
+    if (persistedAudioTrack && (persistedAudioTrack instanceof File || persistedAudioTrack instanceof Blob)) {
+      const aFile = persistedAudioTrack instanceof File 
+        ? persistedAudioTrack 
+        : new File([persistedAudioTrack], project.audioTrackName || '_audio_track.wav', { type: persistedAudioTrack.type || 'audio/wav' });
+      handleUploadAudioTrack(aFile);
+    } else if (project.audioTrackUrl || project.audioTrackName) {
+      setAudioTrackMedia({
+        name: project.audioTrackName || '_audio_track.wav',
+        url: project.audioTrackUrl || '',
+        duration: project.duration || 0,
+      });
+    } else {
+      setAudioTrackMedia(undefined);
     }
 
     setCurrentTime(0);
@@ -514,6 +535,45 @@ export default function App() {
     }
   };
 
+  // Upload Audio Track Handler
+  const handleUploadAudioTrack = async (file: File) => {
+    setIsLoading(true);
+    setLoadingMessage('Processing audio track...');
+    try {
+      const dataUrl = URL.createObjectURL(file);
+      
+      saveMediaFileToStorage(projectId, 'audioTrack', file);
+      
+      try {
+        const audioBuffer = await decodeAudioFile(file);
+        const peaks = extractWaveformPeaks(audioBuffer, 1200);
+        const fileDuration = audioBuffer.duration;
+
+        setAudioTrackMedia({
+          type: 'audio',
+          file,
+          url: dataUrl,
+          name: file.name,
+          duration: fileDuration,
+          audioBuffer,
+          waveformPeaks: peaks,
+        });
+      } catch {
+        setAudioTrackMedia({
+          type: 'audio',
+          file,
+          url: dataUrl,
+          name: file.name,
+          duration: 20,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Pack Icon & Filler Uploads
   const handleUploadPackIcon = async (file: File) => {
     setIsLoading(true);
@@ -704,7 +764,8 @@ export default function App() {
     let needsFilenameUpdate = false;
     const alignedClips = clips.map((clip) => {
       const primaryChar = clip.dubCharacters[0];
-      if (primaryChar && autoScreenshotChars.has(primaryChar)) {
+      // Skip filename sync if the user manually uploaded an image
+      if (primaryChar && autoScreenshotChars.has(primaryChar) && !clip.manualImage) {
         const charClips = clips
           .filter((c) => c.dubCharacters[0] === primaryChar)
           .sort((a, b) => a.startTime - b.startTime);
@@ -734,6 +795,9 @@ export default function App() {
       const primaryChar = clip.dubCharacters[0];
       const charObj = characters.find((c) => c.name === primaryChar);
       if (!charObj?.autoScreenshot) return false;
+
+      // Never overwrite an image the user manually uploaded
+      if (clip.manualImage) return false;
 
       const needsCapture =
         !clip.imageUrl ||
@@ -1179,6 +1243,7 @@ export default function App() {
         clips,
         videoMedia,
         backingTrackMedia,
+        audioTrackMedia,
         (progress) => setExportProgress(progress),
         controller.signal
       );
@@ -1288,9 +1353,11 @@ export default function App() {
             <UploadPanel
               videoMedia={videoMedia}
               backingTrackMedia={backingTrackMedia}
+              audioTrackMedia={audioTrackMedia}
               packInfo={packInfo}
               onUploadVideo={handleUploadVideo}
               onUploadBackingTrack={handleUploadBackingTrack}
+              onUploadAudioTrack={handleUploadAudioTrack}
               onUploadPackIcon={handleUploadPackIcon}
               onUploadFillerImage={handleUploadFillerImage}
               onRemoveVideo={() => {
@@ -1301,6 +1368,7 @@ export default function App() {
                 setCurrentTime(0);
               }}
               onRemoveBackingTrack={() => setBackingTrackMedia(undefined)}
+              onRemoveAudioTrack={() => setAudioTrackMedia(undefined)}
               onRemovePackIcon={() =>
                 setPackInfo((prev) => ({
                   ...prev,
@@ -1337,6 +1405,7 @@ export default function App() {
               <VideoStage
                 videoUrl={videoMedia?.url}
                 backingTrackUrl={backingTrackMedia?.url}
+                audioTrackUrl={audioTrackMedia?.url}
                 currentTime={currentTime}
                 duration={duration}
                 isPlaying={isPlaying}
@@ -1364,7 +1433,7 @@ export default function App() {
                 selectedClipId={selectedClipId}
                 selectedClipIds={selectedClipIds}
                 characters={characters}
-                waveformPeaks={videoMedia?.waveformPeaks}
+                waveformPeaks={audioTrackMedia?.waveformPeaks || videoMedia?.waveformPeaks}
                 disableDubTimestamps={packInfo.disableDubTimestamps || false}
                 onSeek={setCurrentTime}
                 onSelectClip={handleSelectClip}
